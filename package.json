@@ -1,0 +1,43 @@
+{
+  "name": "maplibre-properlabels",
+  "version": "0.0.1",
+  "description": "tiny maplibre plugin to place labels properly for tiled geometries",
+  "keywords": [
+    "maplibre",
+    "labels",
+    "tiled"
+  ],
+  "homepage": "https://github.com/AbelVM/maplibre-properlabels#readme",
+  "bugs": {
+    "url": "https://github.com/AbelVM/maplibre-properlabels/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbelVM/maplibre-properlabels.git"
+  },
+  "license": "MIT",
+  "author": "Abel Vázquez Montoro",
+    "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/maplibre-properlabels.umd.cjs",
+  "module": "./dist/maplibre-properlabels.js",
+  "exports": {
+    ".": {
+      "import": "./dist/maplibre-properlabels.js",
+      "require": "./dist/maplibre-properlabels.umd.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@turf/point-on-feature": "^7.3.0"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2"
+  }
+}
