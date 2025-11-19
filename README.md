@@ -2,14 +2,17 @@
 
 Tiny `Maplibre GL JS` plugin for proper labelling of geometries bigger than the layer tile size.
 
+<img width="1378" height="1027" alt="image" src="https://github.com/user-attachments/assets/7fa03b8f-af3a-4664-9889-a6dfd7dd98e2" />
+(red labels are the "proper" ones 😅)
+
 ## Why
 
-Any tiled sourced layer in maplibre lacks of proper labelling, as
+Any tiled-sourced vector layer in MapLibre lacks proper labelling, as
 
-* every geometry present in several tiles has several labels
-* even the tiniest Polygon get a label, regardless is a feature itself or part of a multigeometry
+* Every geometry that extends through several tiles has several labels
+* Even the tiniest Polygon gets a label, regardless of whether it is a feature itself or part of a multigeometry
 
-So, this plugin tries to fix those issues, while providing dynamic placing, so every feature within the viewport always have a label on sight.
+So, this plugin tries to fix those issues while providing dynamic placement, so every feature within the viewport always has a label in sight.
 
 This is inspired by https://github.com/maplibre/maplibre-tile-spec/issues/710 and my stubbornness
 
@@ -37,7 +40,7 @@ The available parameters are
 | label_style | json  | Maplibre Style for the labels |   |   |
 | label_id | string | Unique property per feature | x | feature ID |
 
-You can enable the `proper labels` by init them once the map is loaded
+You can enable the `proper labels` by initializing them once the map is loaded
 
 ```javascript
 map.on('load', () => {
