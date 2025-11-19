@@ -57,3 +57,12 @@ map.on('load', () => {
     });
 });
 ```
+
+## How does it work
+
+1. It takes advantage of the improved [queryRenderedFeatures](https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#queryrenderedfeatures) in Maplibre GL JS v5.x to give a smooth experience, while retrieving all the features of the `layer_name` layer in the viewport for every movement of the user
+2. Then, the result is grouped by `label_id`, which should uniquely identify the features. In case the feature geometry extends across N tiles, the corresponding `label_id` will have N separate features, one per each part
+3. Now, we build a [FeatureCollection](https://datatracker.ietf.org/doc/html/rfc7946#section-3.3) of the parts for each `label_id`
+4. Then, using [turf.js/pointOnFeature](https://turfjs.org/docs/api/pointOnFeature), we get one point per `label_id` that lies within the feature geometry
+5. Finally, we collect all the points in a [FeatureCollection](https://datatracker.ietf.org/doc/html/rfc7946#section-3.3) and serve as data for a [GeoJSON Source](https://maplibre.org/maplibre-gl-js/docs/API/classes/GeoJSONSource/) and a layer that feeds on that source, and it's styled by `label_style`.
+   
