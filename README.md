@@ -5,6 +5,8 @@ Tiny `Maplibre GL JS` plugin for proper labelling of geometries bigger than the 
 <img width="1378" height="1027" alt="image" src="https://github.com/user-attachments/assets/7fa03b8f-af3a-4664-9889-a6dfd7dd98e2" />
 (red labels are the "proper" ones 😅)
 
+Live example at: https://abelvm.github.io/maplibre-properlabels/example/
+
 ## Why
 
 Any tiled-sourced vector layer in MapLibre lacks proper labelling, as
