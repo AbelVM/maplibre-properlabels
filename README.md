@@ -9,6 +9,9 @@ Tiny `Maplibre GL JS` plugin for proper labelling of geometries bigger than the 
 
 https://abelvm.github.io/maplibre-properlabels/example/
 
+* **Black labels:** raw labelling the `fill` layer
+* **Red labels:** the proper ones!
+
 ## Why
 
 Any tiled-sourced vector layer in MapLibre lacks proper labelling, as
