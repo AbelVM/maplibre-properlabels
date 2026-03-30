@@ -13,6 +13,7 @@ export default class ProperLabels {
         this.tiles = this.source.tiles.map(u => u.split('{z}')[0]);
         this.tileSize = this.source.tileSize || 512;
         this.tolerance = options.tolerance || 0.00001; // ~ 1m on the Equator
+        this.cacheSize = options.cacheSize || 10000;
 
         // worker (use transferable ArrayBuffer for messages)
         this.minion = new MinionWorker();
@@ -29,8 +30,33 @@ export default class ProperLabels {
                     // return buffers to pool for reuse
                     try { if (propsBuf) this._abPool.release(propsBuf instanceof ArrayBuffer ? propsBuf : propsBuf.buffer); } catch (e) {}
                     try { if (coordsBuf) this._abPool.release(coordsBuf instanceof ArrayBuffer ? coordsBuf : coordsBuf.buffer); } catch (e) {}
+                    // if we requested a full payload previously, acknowledge the worker so it can commit cache
+                    try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
                 } catch (err) {
                     console.warn('Failed to decode binary worker response', err);
+                }
+            } else if (msg.type === 'geojson_diff') {
+                try {
+                    const diff = msg && msg.diff ? msg.diff : {};
+
+                    // apply diff via updateData if available
+                    if (this.gjsource && typeof this.gjsource.updateData === 'function') {
+                        try {
+                            this.gjsource.updateData(diff);
+                            // successfully applied diff: acknowledge so worker can commit
+                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
+                        } catch (e) {
+                            // updateData failed: request full payload from worker (do not ack yet)
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) {}
+                            return;
+                        }
+                    } else {
+                        // no updateData support: request a full rebuild from worker (do not ack)
+                        try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) {}
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('Failed to process geojson diff from worker', err);
                 }
             } else if (msg.type === 'geojson' && msg.payload) {
                 try {
@@ -92,17 +118,20 @@ export default class ProperLabels {
                                     try {
                                     // encode geometries into a compact Float32Array + key-indexed properties buffer (use pool)
                                     const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(this._pendingPost.features || [], { pool: this._abPool });
-                                    // send binary message with transferred properties + coordinates buffers
-                                    this.minion.postMessage({ type: 'features_bin', meta, keys, propsBuf: propsBuffer.buffer, tolerance: this._pendingPost.tolerance, coords: coordsArray.buffer }, [propsBuffer.buffer, coordsArray.buffer]);
+                                    // send binary message with transferred properties + coordinates buffers (include cacheSize and promoteId)
+                                    this.minion.postMessage({ type: 'features_bin', meta, keys, propsBuf: propsBuffer.buffer, tolerance: this._pendingPost.tolerance, coords: coordsArray.buffer, cacheSize: this.cacheSize, promoteId: this.fid }, [propsBuffer.buffer, coordsArray.buffer]);
                                 } catch (err) {
                                     // fallback to previous transferable JSON encoding
                                     try {
                                         const encoder = new TextEncoder();
-                                        const json = JSON.stringify(this._pendingPost);
+                                        // attach promoteId so worker can populate promoted id property
+                                        const payload = Object.assign({}, this._pendingPost, { promoteId: this.fid });
+                                        const json = JSON.stringify(payload);
                                         const encoded = encoder.encode(json);
                                         this.minion.postMessage({ type: 'features', payload: encoded.buffer }, [encoded.buffer]);
                                     } catch (err2) {
-                                        this.minion.postMessage(this._pendingPost);
+                                        const payload = Object.assign({}, this._pendingPost, { promoteId: this.fid });
+                                        this.minion.postMessage(payload);
                                     }
                                 }
                             }

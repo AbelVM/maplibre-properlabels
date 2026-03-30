@@ -41,6 +41,8 @@ export class ArrayBufferPool {
     }
 }
 
+// One-time warning flag for decoding invalid floats
+let _decodeInvalidFloatWarned = false;
 // Key-indexed properties encoder/decoder. encodeFeaturesBinary supports optional
 // preallocated buffers or a pool via options: { propsBuffer, coordsBuffer, pool }.
 export function encodeFeaturesBinary(features, options = {}) {
@@ -54,9 +56,17 @@ export function encodeFeaturesBinary(features, options = {}) {
     let propByteOffset = 0;
 
     const pushPoint = (p) => {
-        if (Array.isArray(p)) { coordsList.push(p[0] || 0, p[1] || 0); }
-        else if (p && typeof p.x === 'number' && typeof p.y === 'number') { coordsList.push(p.x, p.y); }
-        else { coordsList.push(0, 0); }
+        if (Array.isArray(p)) {
+            const x = Number(p[0]);
+            const y = Number(p[1]);
+            coordsList.push(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0);
+        } else if (p && (typeof p.x === 'number' || typeof p.y === 'number')) {
+            const x = Number(p.x);
+            const y = Number(p.y);
+            coordsList.push(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0);
+        } else {
+            coordsList.push(0, 0);
+        }
     };
 
     for (const feat of features) {
@@ -196,10 +206,28 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
         const end = idx + (m.coordsLength || 0);
         let geometry = null;
         if (type === 'Point') {
-            geometry = { type: 'Point', coordinates: [coords[idx] || 0, coords[idx + 1] || 0] };
+            const rawX = coords[idx];
+            const rawY = coords[idx + 1];
+            const x = Number.isFinite(rawX) ? Math.max(-180, Math.min(180, rawX)) : 0;
+            const y = Number.isFinite(rawY) ? Math.max(-90, Math.min(90, rawY)) : 0;
+            if ((!Number.isFinite(rawX) || !Number.isFinite(rawY)) && !_decodeInvalidFloatWarned) {
+                _decodeInvalidFloatWarned = true;
+                try { console.warn('decodeFeaturesBinary: encountered non-finite coordinate, replacing with safe value', { index: i, id: id, rawX, rawY }); } catch (e) {}
+            }
+            geometry = { type: 'Point', coordinates: [x, y] };
         } else if (type === 'LineString' || type === 'MultiPoint') {
             const arr = [];
-            for (; idx < end; idx += 2) arr.push([coords[idx], coords[idx + 1]]);
+            for (; idx < end; idx += 2) {
+                const rawX = coords[idx];
+                const rawY = coords[idx + 1];
+                const x = Number.isFinite(rawX) ? Math.max(-180, Math.min(180, rawX)) : 0;
+                const y = Number.isFinite(rawY) ? Math.max(-90, Math.min(90, rawY)) : 0;
+                if ((!Number.isFinite(rawX) || !Number.isFinite(rawY)) && !_decodeInvalidFloatWarned) {
+                    _decodeInvalidFloatWarned = true;
+                    try { console.warn('decodeFeaturesBinary: encountered non-finite coordinate in linestring/multipoint, replacing with safe value', { index: i, id: id, rawX, rawY }); } catch (e) {}
+                }
+                arr.push([x, y]);
+            }
             geometry = { type, coordinates: arr };
         } else if (type === 'Polygon') {
             const rings = [];
@@ -207,7 +235,15 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
             for (const ringLen of ringLengths) {
                 const ring = [];
                 for (let k = 0; k < ringLen; k++) {
-                    ring.push([coords[idx], coords[idx + 1]]);
+                    const rawX = coords[idx];
+                    const rawY = coords[idx + 1];
+                    const x = Number.isFinite(rawX) ? Math.max(-180, Math.min(180, rawX)) : 0;
+                    const y = Number.isFinite(rawY) ? Math.max(-90, Math.min(90, rawY)) : 0;
+                    if ((!Number.isFinite(rawX) || !Number.isFinite(rawY)) && !_decodeInvalidFloatWarned) {
+                        _decodeInvalidFloatWarned = true;
+                        try { console.warn('decodeFeaturesBinary: encountered non-finite coordinate in polygon, replacing with safe value', { index: i, id: id, rawX, rawY }); } catch (e) {}
+                    }
+                    ring.push([x, y]);
                     idx += 2;
                 }
                 rings.push(ring);
@@ -224,7 +260,15 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
                     const ringLen = ringLengths[ringLenIndex++] || 0;
                     const ring = [];
                     for (let k = 0; k < ringLen; k++) {
-                        ring.push([coords[idx], coords[idx + 1]]);
+                        const rawX = coords[idx];
+                        const rawY = coords[idx + 1];
+                        const x = Number.isFinite(rawX) ? Math.max(-180, Math.min(180, rawX)) : 0;
+                        const y = Number.isFinite(rawY) ? Math.max(-90, Math.min(90, rawY)) : 0;
+                        if ((!Number.isFinite(rawX) || !Number.isFinite(rawY)) && !_decodeInvalidFloatWarned) {
+                            _decodeInvalidFloatWarned = true;
+                            try { console.warn('decodeFeaturesBinary: encountered non-finite coordinate in multipolygon, replacing with safe value', { index: i, id: id, rawX, rawY }); } catch (e) {}
+                        }
+                        ring.push([x, y]);
                         idx += 2;
                     }
                     polyRings.push(ring);
@@ -233,9 +277,23 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
             }
             geometry = { type: 'MultiPolygon', coordinates: polys };
         } else {
-            if (idx < end) geometry = { type: 'Point', coordinates: [coords[idx], coords[idx + 1]] };
+            if (idx < end) {
+                const rawX = coords[idx];
+                const rawY = coords[idx + 1];
+                const x = Number.isFinite(rawX) ? Math.max(-180, Math.min(180, rawX)) : 0;
+                const y = Number.isFinite(rawY) ? Math.max(-90, Math.min(90, rawY)) : 0;
+                if ((!Number.isFinite(rawX) || !Number.isFinite(rawY)) && !_decodeInvalidFloatWarned) {
+                    _decodeInvalidFloatWarned = true;
+                    try { console.warn('decodeFeaturesBinary: encountered non-finite coordinate in fallback path, replacing with safe value', { index: i, id: id, rawX, rawY }); } catch (e) {}
+                }
+                geometry = { type: 'Point', coordinates: [x, y] };
+            }
         }
-        features.push({ id, geometry, properties: props });
+        // ensure geometry is a valid GeoJSON geometry object (updateData requires non-null geometry)
+        if (geometry == null) geometry = { type: 'Point', coordinates: [0, 0] };
+        // ensure properties is an object
+        const safeProps = (props && typeof props === 'object') ? props : {};
+        features.push({ type: 'Feature', id, geometry, properties: safeProps });
     }
     return features;
 }
