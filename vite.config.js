@@ -1,12 +1,31 @@
 import { defineConfig } from "vite";
 import { resolve } from 'path';
 
+const label='maplibre-properlabels';
+
 export default defineConfig({
+  base: './',
+  worker: { format: 'es', inline: true },
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.js'),
-      name: 'MapLibre Proper Labels',
-      fileName: 'maplibre-properlabels',
+      name: 'ProperLabels',
+      formats: ['es', 'cjs', 'umd'],
+          fileName: (format) => {
+            if (format === 'umd') return `${label}.js`
+            return `${label}.${format}.js`
+          },
+      minify: 'terser',
+      assetsInlineLimit: 0,
+      terserOptions: {
+        compress: {
+          drop_console: true,
+          drop_debugger: true
+        },
+        format: {
+          comments: false
+        }
+      }
     }
   }
 });
