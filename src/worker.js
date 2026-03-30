@@ -7,7 +7,7 @@ import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool } from './u
 
 const _abPool = new ArrayBufferPool();
 
-// Feature cache: Map<id, { feature, geomStr, ts }>
+// Feature cache: Map<id, { feature, geomHash, ts }>
 const _cache = new Map();
 let _cacheSize = 10000;
 let _pendingDiff = null; // { addList, updateList, removeList }
@@ -143,6 +143,88 @@ function safePolylabel(coords, precision) {
     return [0, 0];
 }
 
+// Geometry hashing utilities (FNV-1a over float64 bit representation)
+const _hashBuf = new ArrayBuffer(8);
+const _hashView = new DataView(_hashBuf);
+function _fnv1aInit() { return 2166136261 >>> 0; }
+function _fnv1aUpdateUint32(h, v) { h ^= v >>> 0; h = Math.imul(h, 16777619) >>> 0; return h; }
+function _hashNumber(h, num) {
+    const n = Number(num) || 0;
+    _hashView.setFloat64(0, n, true);
+    h = _fnv1aUpdateUint32(h, _hashView.getUint32(0, true));
+    h = _fnv1aUpdateUint32(h, _hashView.getUint32(4, true));
+    return h;
+}
+function _hashString(h, s) {
+    if (!s) return h;
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        h = _fnv1aUpdateUint32(h, code & 0xFFFF);
+    }
+    return h;
+}
+
+function computeGeometryHash(geom) {
+    if (!geom) return 0;
+    let h = _fnv1aInit();
+    h = _hashString(h, geom.type || '');
+    const type = geom.type;
+    if (type === 'Point') {
+        const c = geom.coordinates || [];
+        h = _hashNumber(h, c[0]);
+        h = _hashNumber(h, c[1]);
+        return h;
+    }
+    if (type === 'LineString' || type === 'MultiPoint') {
+        const coords = geom.coordinates || [];
+        for (const p of coords) {
+            h = _hashNumber(h, p && p[0]);
+            h = _hashNumber(h, p && p[1]);
+        }
+        return h;
+    }
+    if (type === 'Polygon') {
+        const rings = geom.coordinates || [];
+        h = _fnv1aUpdateUint32(h, rings.length);
+        for (const ring of rings) {
+            h = _fnv1aUpdateUint32(h, ring.length || 0);
+            for (const p of ring) {
+                h = _hashNumber(h, p && p[0]);
+                h = _hashNumber(h, p && p[1]);
+            }
+        }
+        return h;
+    }
+    if (type === 'MultiPolygon') {
+        const polys = geom.coordinates || [];
+        h = _fnv1aUpdateUint32(h, polys.length);
+        for (const poly of polys) {
+            h = _fnv1aUpdateUint32(h, poly.length || 0);
+            for (const ring of poly) {
+                h = _fnv1aUpdateUint32(h, ring.length || 0);
+                for (const p of ring) {
+                    h = _hashNumber(h, p && p[0]);
+                    h = _hashNumber(h, p && p[1]);
+                }
+            }
+        }
+        return h;
+    }
+    // fallback: serialize minimal coords
+    try {
+        const coords = geom.coordinates || [];
+        for (const c of coords) {
+            if (Array.isArray(c)) {
+                h = _hashNumber(h, c[0]);
+                h = _hashNumber(h, c[1]);
+            } else {
+                h = _hashNumber(h, c);
+            }
+        }
+    } catch (e) {}
+    return h;
+}
+
 onmessage = e => {
     // Accept either object messages, transferable JSON, or our binary geometry format
     let incoming = e && e.data;
@@ -155,9 +237,10 @@ onmessage = e => {
                 for (const f of _pendingDiff.addList || []) {
                     if (f && f.id != null) {
                         try {
-                            _cache.set(String(f.id), { feature: f, geomStr: JSON.stringify(f.geometry), ts: Date.now() });
+                            const gh = computeGeometryHash(f.geometry);
+                            _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
                         } catch (e) {
-                            _cache.set(String(f.id), { feature: f, geomStr: '', ts: Date.now() });
+                            _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
                         }
                     }
                 }
@@ -165,9 +248,10 @@ onmessage = e => {
                 for (const f of _pendingDiff.updateList || []) {
                     if (f && f.id != null) {
                         try {
-                            _cache.set(String(f.id), { feature: f, geomStr: JSON.stringify(f.geometry), ts: Date.now() });
+                            const gh = computeGeometryHash(f.geometry);
+                            _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
                         } catch (e) {
-                            _cache.set(String(f.id), { feature: f, geomStr: '', ts: Date.now() });
+                            _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
                         }
                     }
                 }
@@ -317,9 +401,10 @@ onmessage = e => {
             for (const f of newFeatures) {
                 if (f && f.id != null) {
                     try {
-                        _cache.set(String(f.id), { feature: f, geomStr: JSON.stringify(f.geometry), ts: Date.now() });
+                        const gh = computeGeometryHash(f.geometry);
+                        _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
                     } catch (e) {
-                        _cache.set(String(f.id), { feature: f, geomStr: '', ts: Date.now() });
+                        _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
                     }
                     // enforce size as we seed
                     while (_cache.size > _cacheSize) {
@@ -339,16 +424,16 @@ onmessage = e => {
         const updateFullList = [];
         const updateIds = new Set();
 
-        for (const f of newFeatures) {
+            for (const f of newFeatures) {
             if (!f || f.id == null) continue;
             const id = String(f.id);
             const cached = _cache.get(id);
             if (!cached) {
                 addList.push(f);
             } else {
-                let geomStr = '';
-                try { geomStr = JSON.stringify(f.geometry); } catch (e) {}
-                if (geomStr !== (cached.geomStr || '')) {
+                let geomHash = 0;
+                try { geomHash = computeGeometryHash(f.geometry); } catch (e) { geomHash = 0; }
+                if (geomHash !== (cached.geomHash || 0)) {
                     updateFullList.push(f);
                     updateIds.add(id);
                 }
