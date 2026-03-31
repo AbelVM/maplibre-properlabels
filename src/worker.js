@@ -522,6 +522,8 @@ onmessage = e => {
                 const upKeyIndex = new Map();
                 const upChunks = [];
                 let upOffset = 0;
+                // transient cache for serialized primitive values in update diffs
+                const upSerializeCache = new Map();
                 const updateMeta = updateDiffs.map(d => {
                     const entry = { id: d.id };
                     if (d.removeAllProperties) entry.removeAllProperties = true;
@@ -537,8 +539,20 @@ onmessage = e => {
                             const k = p.key;
                             let ki = upKeyIndex.get(k);
                             if (ki === undefined) { ki = upKeys.length; upKeys.push(k); upKeyIndex.set(k, ki); }
-                            const valJson = JSON.stringify(p.value);
-                            const enc = textEncoder.encode(valJson);
+                            const v = p.value;
+                            let enc;
+                            if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                                const cacheKey = typeof v + '|' + String(v);
+                                enc = upSerializeCache.get(cacheKey);
+                                if (!enc) {
+                                    const valJson = JSON.stringify(v);
+                                    enc = textEncoder.encode(valJson);
+                                    upSerializeCache.set(cacheKey, enc);
+                                }
+                            } else {
+                                const valJson = JSON.stringify(v);
+                                enc = textEncoder.encode(valJson);
+                            }
                             upChunks.push(enc);
                             const off = upOffset;
                             const len = enc.length;
@@ -550,7 +564,7 @@ onmessage = e => {
                 });
                 let upPropsBuf = null;
                 if (upOffset > 0) {
-                    const buf = _abPool.rent(upOffset || 1);
+                    const buf = _abPool.rent(upOffset);
                     upPropsBuf = new Uint8Array(buf, 0, upOffset);
                     let ppos = 0;
                     for (const c of upChunks) {

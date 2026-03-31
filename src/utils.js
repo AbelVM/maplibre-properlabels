@@ -23,7 +23,9 @@ export class ArrayBufferPool {
     }
 
     rent(minSize) {
-        const size = ArrayBufferPool._nextPow2(minSize || 1);
+        // Treat zero-length requests specially: return a shared zero-length buffer
+        if (!minSize || minSize <= 0) return ArrayBufferPool.ZERO_BUFFER;
+        const size = ArrayBufferPool._nextPow2(minSize);
         const list = this.map.get(size);
         if (list && list.length) return list.pop();
         return new ArrayBuffer(size);
@@ -41,6 +43,9 @@ export class ArrayBufferPool {
     }
 }
 
+// shared zero-length ArrayBuffer used for zero-size rents
+ArrayBufferPool.ZERO_BUFFER = new ArrayBuffer(0);
+
 // Shared text encoder/decoder reused across modules to avoid repeated allocations
 export const textEncoder = new TextEncoder();
 export const textDecoder = new TextDecoder();
@@ -50,6 +55,15 @@ export const textDecoder = new TextDecoder();
 // encountered to reduce repeated Map/Array allocations across encodes.
 export const sharedKeyTable = { keys: [], index: new Map() };
 
+// Maximum number of keys to keep in the sharedKeyTable before resetting.
+// Prevents unbounded growth when sources introduce many unique property names.
+export const SHARED_KEY_TABLE_MAX = 2000;
+
+export function resetSharedKeyTable() {
+    sharedKeyTable.keys = [];
+    sharedKeyTable.index = new Map();
+}
+
 // One-time warning flag for decoding invalid floats
 let _decodeInvalidFloatWarned = false;
 // Key-indexed properties encoder/decoder. encodeFeaturesBinary supports optional
@@ -58,6 +72,9 @@ export function encodeFeaturesBinary(features, options = {}) {
     const meta = [];
     const coordsList = [];
     const propChunks = [];
+    // transient per-encode cache shared across all features to reduce repeated
+    // JSON.stringify/textEncoder work for identical primitive values.
+    const serializeCache = new Map();
     // reuse shared encoder to reduce allocations
     const useShared = !!options.useSharedKeyTable;
     let keys;
@@ -134,9 +151,28 @@ export function encodeFeaturesBinary(features, options = {}) {
                 ki = keys.length;
                 keys.push(k);
                 keyIndex.set(k, ki);
+                // guard against runaway shared key-table growth
+                if (useShared && keys.length > SHARED_KEY_TABLE_MAX) {
+                    // reset the shared table to avoid unbounded memory use
+                    resetSharedKeyTable();
+                    keys = sharedKeyTable.keys;
+                    keyIndex = sharedKeyTable.index;
+                }
             }
-            const valJson = JSON.stringify(props[k]);
-            const enc = textEncoder.encode(valJson);
+            const val = props[k];
+            let enc;
+            if (val === null || typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+                const cacheKey = typeof val + '|' + String(val);
+                enc = serializeCache.get(cacheKey);
+                if (!enc) {
+                    const valJson = JSON.stringify(val);
+                    enc = textEncoder.encode(valJson);
+                    serializeCache.set(cacheKey, enc);
+                }
+            } else {
+                const valJson = JSON.stringify(val);
+                enc = textEncoder.encode(valJson);
+            }
             propChunks.push(enc);
             propList.push([ki, propByteOffset, enc.length]);
             propByteOffset += enc.length;
