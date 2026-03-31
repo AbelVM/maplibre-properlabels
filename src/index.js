@@ -359,11 +359,12 @@ export default class ProperLabels {
 }
 
 maplibregl.VectorTileSource.prototype.ProperLabels = function (options) {
-    if (!this._proper) {
-        this._proper = new ProperLabels({
+    const opts = Object.assign({}, options, {
             map: this._map,
             source: this
         });
+    if (!this._proper) {
+        this._proper = new ProperLabels(opts);
     }
     return this._proper;
 }

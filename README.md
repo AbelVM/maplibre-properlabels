@@ -54,21 +54,22 @@ Use via CDN (jsDelivr / unpkg):
 <script src="https://unpkg.com/maplibre-properlabels@1.0.0/dist/maplibre-properlabels.js"></script>
 ```
 
-When using the CDN bundle the plugin registers itself on `maplibregl.VectorTileSource.prototype` and can be used like this:
+And then
 
 ```javascript
-const mysource = map.getSource('demotiles');
-const proper = mysource.ProperLabels({
+const proper = new ProperLabels({
+        map: map,
+        source: 'demotiles', 
         sourceLayer: 'countries'
     });
 ```
 
-or
+When using the CDN bundle the plugin registers itself on `maplibregl.VectorTileSource.prototype` and can also be used like this:
 
 ```javascript
-const proper = new ProperLabels({
-        map,
-        source: 'demotiles', 
+const mysource = map.getSource('demotiles');
+const proper = mysource.ProperLabels({
+        // no need to provide `map` or `source` as they are implicit in `mysource`
         sourceLayer: 'countries'
     });
 ```
