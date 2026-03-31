@@ -58,6 +58,114 @@ export default class ProperLabels {
                 } catch (err) {
                     console.warn('Failed to process geojson diff from worker', err);
                 }
+            } else if (msg.type === 'geojson_diff_bin') {
+                try {
+                    // decode binary add/update payloads then reconstruct canonical diff
+                    const removeList = msg.removeList || [];
+                    const removeAll = !!msg.removeAll;
+
+                    let addFeatures = [];
+                    if (msg.add && msg.add.coords) {
+                        try {
+                            const addPropsBuf = msg.add.propsBuf !== undefined ? msg.add.propsBuf : null;
+                            const addCoordsBuf = msg.add.coords;
+                            addFeatures = decodeFeaturesBinary(msg.add.meta || [], addPropsBuf, addCoordsBuf, msg.add.keys || []);
+                            try { if (addPropsBuf) this._abPool.release(addPropsBuf instanceof ArrayBuffer ? addPropsBuf : addPropsBuf.buffer); } catch (e) {}
+                            try { if (addCoordsBuf) this._abPool.release(addCoordsBuf instanceof ArrayBuffer ? addCoordsBuf : addCoordsBuf.buffer); } catch (e) {}
+                        } catch (err) {
+                            console.warn('Failed to decode add-list from worker', err);
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            return;
+                        }
+                    }
+
+                    let updateFeatures = [];
+                    if (msg.update && msg.update.coords) {
+                        try {
+                            const updPropsBuf = msg.update.propsBuf !== undefined ? msg.update.propsBuf : null;
+                            const updCoordsBuf = msg.update.coords;
+                            updateFeatures = decodeFeaturesBinary(msg.update.meta || [], updPropsBuf, updCoordsBuf, msg.update.keys || []);
+                            try { if (updPropsBuf) this._abPool.release(updPropsBuf instanceof ArrayBuffer ? updPropsBuf : updPropsBuf.buffer); } catch (e) {}
+                            try { if (updCoordsBuf) this._abPool.release(updCoordsBuf instanceof ArrayBuffer ? updCoordsBuf : updCoordsBuf.buffer); } catch (e) {}
+                        } catch (err) {
+                            console.warn('Failed to decode update-list from worker', err);
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            return;
+                        }
+                    }
+
+                    // Reconstruct update diffs: decode compacted diffs when present,
+                    // then attach newGeometry from decoded updateFeatures.
+                    let updateDiffsRaw = [];
+                    if (msg.updateDiffs && Array.isArray(msg.updateDiffs)) {
+                        updateDiffsRaw = msg.updateDiffs;
+                    } else if (msg.updateDiffsMeta && Array.isArray(msg.updateDiffsMeta)) {
+                        // decode compacted property diffs using keys + props buffer
+                        try {
+                            const upKeys = msg.updateKeys || [];
+                            const upPropsBuf = msg.updatePropsBuf !== undefined ? msg.updatePropsBuf : null;
+                            const upPropsBytes = upPropsBuf ? (upPropsBuf instanceof Uint8Array ? upPropsBuf : new Uint8Array(upPropsBuf)) : new Uint8Array(0);
+                            const decoder = new TextDecoder();
+                            for (const meta of msg.updateDiffsMeta) {
+                                const d = { id: meta.id };
+                                if (meta.removeAllProperties) d.removeAllProperties = true;
+                                if (Array.isArray(meta.removeProperties) && meta.removeProperties.length) {
+                                    d.removeProperties = meta.removeProperties.map(i => upKeys[i]);
+                                }
+                                if (Array.isArray(meta.addOrUpdate) && meta.addOrUpdate.length) {
+                                    const arr = [];
+                                    for (const tup of meta.addOrUpdate) {
+                                        const [ki, off, len] = tup;
+                                        const key = upKeys[ki];
+                                        try {
+                                            const slice = upPropsBytes.subarray(off, off + len);
+                                            const val = JSON.parse(decoder.decode(slice));
+                                            arr.push({ key, value: val });
+                                        } catch (err) {
+                                            // ignore parse errors per-property
+                                        }
+                                    }
+                                    if (arr.length) d.addOrUpdateProperties = arr;
+                                }
+                                updateDiffsRaw.push(d);
+                            }
+                            // release props buffer back to pool
+                            try { if (upPropsBuf) this._abPool.release(upPropsBuf instanceof ArrayBuffer ? upPropsBuf : upPropsBuf.buffer); } catch (e) {}
+                        } catch (err) {
+                            console.warn('Failed to decode compacted update diffs', err);
+                        }
+                    }
+                    const updateMap = new Map((updateFeatures || []).map(f => [String(f.id), f]));
+                    const updateDiffsFinal = updateDiffsRaw.map(d => {
+                        const out = { id: d.id };
+                        const nf = updateMap.get(String(d.id));
+                        if (nf && nf.geometry) out.newGeometry = nf.geometry;
+                        if (d.removeAllProperties) out.removeAllProperties = true;
+                        if (d.removeProperties) out.removeProperties = d.removeProperties;
+                        if (d.addOrUpdateProperties) out.addOrUpdateProperties = d.addOrUpdateProperties;
+                        return out;
+                    }).filter(x => x != null);
+
+                    const diffObj = {};
+                    if (removeAll) diffObj.removeAll = true; else if (removeList.length) diffObj.remove = removeList;
+                    if (addFeatures.length) diffObj.add = addFeatures;
+                    if (updateDiffsFinal.length) diffObj.update = updateDiffsFinal;
+
+                    if (this.gjsource && typeof this.gjsource.updateData === 'function') {
+                        try {
+                            this.gjsource.updateData(diffObj);
+                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
+                        } catch (err) {
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            return;
+                        }
+                    } else {
+                        try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('Failed to process binary geojson diff from worker', err);
+                }
             } else if (msg.type === 'geojson' && msg.payload) {
                 try {
                     const buf = msg.payload instanceof Uint8Array ? msg.payload.buffer : msg.payload;

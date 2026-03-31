@@ -38,6 +38,7 @@
     "@mapbox/vector-tile": "^2.0.4",
     "@turf/combine": "^7.3.4",
     "@turf/flatten": "^7.3.4",
+    "@turf/point-on-feature": "^7.3.4",
     "@turf/simplify": "^7.3.4",
     "@turf/union": "^7.3.4",
     "pbf": "^4.0.1",

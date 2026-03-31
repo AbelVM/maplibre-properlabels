@@ -5,8 +5,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MapLibre GL — Label Merge Demo</title>
+    <link rel="icon" type="image/x-icon" href="https://nimbi.es/favicon.ico">
     <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.21.1/dist/maplibre-gl.css' />
     <script src='https://unpkg.com/maplibre-gl@5.21.1/dist/maplibre-gl.js'></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
+        rel="stylesheet">
     <script src='../dist/maplibre-properlabels.js'></script>
     <style>
         html,
@@ -72,7 +77,7 @@
                         source: 'demotiles',
                         'source-layer': 'countries',
                         paint: {
-                            'fill-color':[
+                            'fill-color': [
                                 "case",
                                 ["boolean", ["get", "clipped"], false],
                                 '#e6f8ee',
@@ -88,7 +93,8 @@
                         'source-layer': 'countries',
                         layout: {
                             'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
-                            'text-size': 12
+                            'text-size': 12,
+                            "text-font": ["Montserrat"]
                         },
                         paint: {
                             'text-color': '#000000',
@@ -118,7 +124,8 @@
                 source: 'demotiles-proper',
                 layout: {
                     'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
-                    'text-size': 12
+                    'text-size': 12,
+                    "text-font": ["Montserrat"]
                 },
                 paint: {
                     'text-color': '#ff0000',

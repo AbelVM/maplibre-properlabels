@@ -2,6 +2,7 @@ import { union } from "@turf/union";
 import { combine } from "@turf/combine";
 import { flatten } from "@turf/flatten";
 import polylabel from 'polylabel';
+import { pointOnFeature } from "@turf/point-on-feature";
 import { simplify } from "@turf/simplify";
 import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool } from './utils.js';
 
@@ -12,140 +13,29 @@ const _cache = new Map();
 let _cacheSize = 10000;
 let _pendingDiff = null; // { addList, updateList, removeList }
 
-// Geometry sanitization helpers to ensure coordinates are [lng, lat]
-function isFiniteNumber(n) {
-    return typeof n === 'number' && isFinite(n);
-}
 
-function isValidLngLatPair(pair) {
-    if (!Array.isArray(pair) || pair.length < 2) return false;
-    const lng = Number(pair[0]);
-    const lat = Number(pair[1]);
-    if (!isFiniteNumber(lng) || !isFiniteNumber(lat)) return false;
-    return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-}
-
-function sanitizeCoordinates(coords) {
-    if (!Array.isArray(coords)) return [0, 0];
-    if (coords.length === 0) return coords;
-    if (typeof coords[0] === 'number') {
-        const x = Number(coords[0]);
-        const y = Number(coords[1]);
-        if (isValidLngLatPair([x, y])) return [x, y];
-        if (isValidLngLatPair([y, x])) return [y, x];
-        return [0, 0];
-    }
-    return coords.map(sanitizeCoordinates);
-}
-
-function sanitizeGeometry(geom) {
-    if (!geom || !geom.type) return { type: 'Point', coordinates: [0, 0] };
+const safePolylabel = (feature, precision) => {
     try {
-        const t = geom.type;
-        geom.coordinates = sanitizeCoordinates(geom.coordinates);
-        // ensure Point/LineString/Polygon types remain valid minimal shapes
-        if (t === 'Point') {
-            if (!Array.isArray(geom.coordinates) || geom.coordinates.length < 2) geom.coordinates = [0, 0];
+        const coords = feature && feature.geometry && feature.geometry.coordinates;
+        let pt = polylabel(coords, precision);
+        if (!Array.isArray(pt) || !Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) {
+            pt = pointOnFeature(feature).geometry.coordinates;
         }
-        return { type: t, coordinates: geom.coordinates };
+        return {
+            type: 'Point',
+            coordinates: [pt[0], pt[1]]
+        }
     } catch (err) {
-        return { type: 'Point', coordinates: [0, 0] };
+        console.log('Invalid feature geometry', feature && feature.id)
+        return pointOnFeature(feature).geometry;
     }
 }
 
-// Safe polylabel wrapper with a centroid fallback for degenerate polygons
-function _ringArea(ring) {
-    let area = 0;
-    for (let i = 0; i < ring.length; i++) {
-        const j = (i + 1) % ring.length;
-        const xi = Number(ring[i] && ring[i][0]) || 0;
-        const yi = Number(ring[i] && ring[i][1]) || 0;
-        const xj = Number(ring[j] && ring[j][0]) || 0;
-        const yj = Number(ring[j] && ring[j][1]) || 0;
-        area += xi * yj - xj * yi;
-    }
-    return area / 2;
-}
-
-function _ringCentroid(ring) {
-    let cx = 0, cy = 0, areaTimes2 = 0;
-    for (let i = 0; i < ring.length; i++) {
-        const j = (i + 1) % ring.length;
-        const xi = Number(ring[i] && ring[i][0]) || 0;
-        const yi = Number(ring[i] && ring[i][1]) || 0;
-        const xj = Number(ring[j] && ring[j][0]) || 0;
-        const yj = Number(ring[j] && ring[j][1]) || 0;
-        const cross = xi * yj - xj * yi;
-        cx += (xi + xj) * cross;
-        cy += (yi + yj) * cross;
-        areaTimes2 += cross;
-    }
-    const area = areaTimes2 / 2;
-    if (!Number.isFinite(area) || Math.abs(area) < 1e-12) {
-        // degenerate: fallback to simple average
-        let sx = 0, sy = 0, n = 0;
-        for (const p of ring) {
-            const x = Number(p && p[0]);
-            const y = Number(p && p[1]);
-            if (Number.isFinite(x) && Number.isFinite(y)) { sx += x; sy += y; n++; }
-        }
-        return n ? [sx / n, sy / n] : [0, 0];
-    }
-    const cxFinal = cx / (6 * area);
-    const cyFinal = cy / (6 * area);
-    return [cxFinal, cyFinal];
-}
-
-function _polygonCentroid(polygon) {
-    if (!Array.isArray(polygon) || polygon.length === 0) return null;
-    const outer = polygon[0];
-    if (!Array.isArray(outer) || outer.length === 0) return null;
-    return _ringCentroid(outer);
-}
-
-function _multiPolygonCentroid(multipolygon) {
-    if (!Array.isArray(multipolygon) || multipolygon.length === 0) return null;
-    let best = null;
-    let bestArea = 0;
-    for (const poly of multipolygon) {
-        if (!Array.isArray(poly) || !Array.isArray(poly[0])) continue;
-        const area = Math.abs(_ringArea(poly[0]));
-        if (area > bestArea) {
-            bestArea = area;
-            best = poly[0];
-        }
-    }
-    if (best) return _ringCentroid(best);
-    return null;
-}
-
-function safePolylabel(coords, precision) {
-    try {
-        const pt = polylabel(coords, precision);
-        if (Array.isArray(pt) && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) return [pt[0],pt[1]];
-    } catch (e) {
-        // continue to fallback
-    }
-    // fallback to centroid-like heuristics
-    try {
-        if (!Array.isArray(coords) || coords.length === 0) return [0, 0];
-        // detect MultiPolygon (depth 3)
-        if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && Array.isArray(coords[0][0][0])) {
-            const c = _multiPolygonCentroid(coords);
-            if (c) return c;
-        }
-        // treat as Polygon
-        const c = _polygonCentroid(coords);
-        if (c) return c;
-    } catch (err) {
-        // ignore
-    }
-    return [0, 0];
-}
-
-// Geometry hashing utilities (FNV-1a over float64 bit representation)
+// Geometry hashing utilities (FNV-1a over Float32 representation for speed)
 const _hashBuf = new ArrayBuffer(8);
 const _hashView = new DataView(_hashBuf);
+const _hashBuf32 = new ArrayBuffer(4);
+const _hashView32 = new DataView(_hashBuf32);
 function _fnv1aInit() { return 2166136261 >>> 0; }
 function _fnv1aUpdateUint32(h, v) { h ^= v >>> 0; h = Math.imul(h, 16777619) >>> 0; return h; }
 function _hashNumber(h, num) {
@@ -153,6 +43,14 @@ function _hashNumber(h, num) {
     _hashView.setFloat64(0, n, true);
     h = _fnv1aUpdateUint32(h, _hashView.getUint32(0, true));
     h = _fnv1aUpdateUint32(h, _hashView.getUint32(4, true));
+    return h;
+}
+
+// Faster 32-bit float hashing used for geometry coordinates
+function _hashNumber32(h, num) {
+    const n = Number(num) || 0;
+    _hashView32.setFloat32(0, n, true);
+    h = _fnv1aUpdateUint32(h, _hashView32.getUint32(0, true));
     return h;
 }
 function _hashString(h, s) {
@@ -171,15 +69,15 @@ function computeGeometryHash(geom) {
     const type = geom.type;
     if (type === 'Point') {
         const c = geom.coordinates || [];
-        h = _hashNumber(h, c[0]);
-        h = _hashNumber(h, c[1]);
+        h = _hashNumber32(h, c[0]);
+        h = _hashNumber32(h, c[1]);
         return h;
     }
     if (type === 'LineString' || type === 'MultiPoint') {
         const coords = geom.coordinates || [];
         for (const p of coords) {
-            h = _hashNumber(h, p && p[0]);
-            h = _hashNumber(h, p && p[1]);
+            h = _hashNumber32(h, p && p[0]);
+            h = _hashNumber32(h, p && p[1]);
         }
         return h;
     }
@@ -189,8 +87,8 @@ function computeGeometryHash(geom) {
         for (const ring of rings) {
             h = _fnv1aUpdateUint32(h, ring.length || 0);
             for (const p of ring) {
-                h = _hashNumber(h, p && p[0]);
-                h = _hashNumber(h, p && p[1]);
+                h = _hashNumber32(h, p && p[0]);
+                h = _hashNumber32(h, p && p[1]);
             }
         }
         return h;
@@ -203,8 +101,8 @@ function computeGeometryHash(geom) {
             for (const ring of poly) {
                 h = _fnv1aUpdateUint32(h, ring.length || 0);
                 for (const p of ring) {
-                    h = _hashNumber(h, p && p[0]);
-                    h = _hashNumber(h, p && p[1]);
+                    h = _hashNumber32(h, p && p[0]);
+                    h = _hashNumber32(h, p && p[1]);
                 }
             }
         }
@@ -215,13 +113,59 @@ function computeGeometryHash(geom) {
         const coords = geom.coordinates || [];
         for (const c of coords) {
             if (Array.isArray(c)) {
-                h = _hashNumber(h, c[0]);
-                h = _hashNumber(h, c[1]);
+                h = _hashNumber32(h, c[0]);
+                h = _hashNumber32(h, c[1]);
             } else {
-                h = _hashNumber(h, c);
+                h = _hashNumber32(h, c);
             }
         }
-    } catch (e) {}
+    } catch (e) { }
+    return h;
+}
+
+// Deep-equality for geometries with a small numeric epsilon to avoid false
+// positives from float32 truncation. Used as a fallback when hashes differ.
+function _coordsEqual(a, b, eps = 1e-6) {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= eps;
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (!_coordsEqual(a[i], b[i], eps)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+function geometryEquals(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a.type !== b.type) return false;
+    return _coordsEqual(a.coordinates, b.coordinates);
+}
+
+function computeGroupRawHash(group) {
+    let h = _fnv1aInit();
+    h = _fnv1aUpdateUint32(h, group.length || 0);
+    for (const f of group) {
+        // include feature id as part of raw signature
+        h = _hashString(h, f && f.id != null ? String(f.id) : '');
+        if (f && f.geometry) h = _fnv1aUpdateUint32(h, computeGeometryHash(f.geometry));
+        if (f && f.properties) {
+            const keys = Object.keys(f.properties).sort();
+            for (const k of keys) {
+                h = _hashString(h, k);
+                const v = f.properties[k];
+                if (v == null) {
+                    h = _fnv1aUpdateUint32(h, 0);
+                } else if (typeof v === 'number') {
+                    h = _hashNumber(h, v);
+                } else {
+                    h = _hashString(h, String(v));
+                }
+            }
+        }
+    }
     return h;
 }
 
@@ -233,31 +177,35 @@ onmessage = e => {
     if (incoming && incoming.type === 'diff_ack') {
         try {
             if (_pendingDiff) {
-                // apply adds
-                for (const f of _pendingDiff.addList || []) {
+                // apply adds (entries may be { feature, rawHash, geomHash } or plain Feature for older shape)
+                for (const entry of _pendingDiff.addList || []) {
+                    const f = entry && (entry.feature || entry);
                     if (f && f.id != null) {
                         try {
-                            const gh = computeGeometryHash(f.geometry);
-                            _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
+                            const geomHash = entry && entry.geomHash !== undefined ? entry.geomHash : computeGeometryHash(f.geometry);
+                            const rawHash = entry && entry.rawHash !== undefined ? entry.rawHash : geomHash;
+                            _cache.set(String(f.id), { feature: f, geomHash, rawHash, ts: Date.now() });
                         } catch (e) {
-                            _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
+                            _cache.set(String(f.id), { feature: f, geomHash: 0, rawHash: 0, ts: Date.now() });
                         }
                     }
                 }
-                // apply updates (re-insert to mark recent)
-                for (const f of _pendingDiff.updateList || []) {
+                // apply updates (entries may be objects or plain Feature)
+                for (const entry of _pendingDiff.updateList || []) {
+                    const f = entry && (entry.feature || entry);
                     if (f && f.id != null) {
                         try {
-                            const gh = computeGeometryHash(f.geometry);
-                            _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
+                            const geomHash = entry && entry.geomHash !== undefined ? entry.geomHash : computeGeometryHash(f.geometry);
+                            const rawHash = entry && entry.rawHash !== undefined ? entry.rawHash : geomHash;
+                            _cache.set(String(f.id), { feature: f, geomHash, rawHash, ts: Date.now() });
                         } catch (e) {
-                            _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
+                            _cache.set(String(f.id), { feature: f, geomHash: 0, rawHash: 0, ts: Date.now() });
                         }
                     }
                 }
                 // apply removals
                 for (const id of _pendingDiff.removeList || []) {
-                    try { _cache.delete(String(id)); } catch (e) {}
+                    try { _cache.delete(String(id)); } catch (e) { }
                 }
                 // enforce cache size
                 while (_cache.size > _cacheSize) {
@@ -326,60 +274,76 @@ onmessage = e => {
         groupedMap.set(k, arr);
     }
 
-    const geojson = {
-        type: 'FeatureCollection',
-        features: []
-    };
+    const geojson = { type: 'FeatureCollection', features: [] };
+
+    // We'll avoid heavy processing when the raw group inputs haven't changed by
+    // computing a raw-group hash and reusing cached processed features.
+    const addList = [];
+    const updateFullList = [];
+    const updateIds = new Set();
+    const newFeatures = [];
+    const pendingCacheEntries = new Map(); // idStr -> { feature, rawHash, geomHash }
 
     for (const [id, group] of groupedMap.entries()) {
+        const idStr = String(id);
+        const rawHash = computeGroupRawHash(group);
+        const cached = _cache.get(idStr);
+
+        if (cached && cached.rawHash === rawHash) {
+            // reuse processed feature from cache
+            newFeatures.push(cached.feature);
+            continue;
+        }
+
         const { clipped, ...props } = (group[0] && group[0].properties) || {};
-        let feature;
+        let collection
         if (group.length === 1) {
             const geom = group[0].geometry;
-            feature = simplify({ type: 'Feature', id: id, geometry: geom, properties: props }, { tolerance, mutate });
-            try {
-                geom.coordinates = safePolylabel(geom.coordinates, tolerance);
-                geom.type = 'Point';
-            } catch (err) {
-                // leave original geometry on failure
-            }
+            collection = simplify(flatten({ type: 'Feature', id: id, geometry: geom, properties: props }), { tolerance, mutate });
         } else {
-            let collection = {
-                type: 'FeatureCollection',
-                features: group.map(f => (simplify({ type: 'Feature', geometry: f.geometry }, { tolerance, mutate })))
-            };
-            try {
-                if (group.some(f => f.properties && f.properties.clipped)) {
-                    collection = union(collection);
-                }
-                collection = flatten(collection);
-                collection.features.forEach(f => {
-                    try {
-                        f.geometry.coordinates = safePolylabel(f.geometry.coordinates, tolerance);
-                        f.geometry.type = 'Point';
-                    } catch (err) {
-                        // ignore polylabel failures per feature
-                    }
-                    return f;
-                });
-                collection = combine(collection);
-                feature = (collection && collection.features && collection.features[0]) ? collection.features[0] : { type: 'Feature', id: id, geometry: group[0].geometry, properties: props };
-            } catch (err) {
-                // union/flatten/combine can throw on invalid geometries; fall back to first geometry
-                feature = { type: 'Feature', id: id, geometry: group[0].geometry, properties: props };
+            collection = simplify(flatten({ type: 'FeatureCollection', features: group.map(f => ({ type: 'Feature', id: id, geometry: f.geometry, properties: props })) }), { tolerance, mutate });
+            if (group.some(f => f.properties && f.properties.clipped)) {
+                collection = flatten(union(collection));
             }
-            feature.id = id;
-            feature.properties = props;
         }
-        // sanitize geometry to ensure valid [lng, lat] ordering and numeric values
-        try { feature.geometry = sanitizeGeometry(feature.geometry); } catch (e) {}
-        geojson.features.push(feature);
+        collection.features.forEach(f => {
+            f.id = id;
+            if (f.geometry.type === 'Polygon') {
+                f.geometry = safePolylabel(f, tolerance);
+            } else {
+                console.log('Unexpected geometry type after union/simplify/flatten for id:' + id + ' - type:' + f.geometry.type);
+            }
+            return f;
+        });
+        collection = combine(collection);
+        const feature = { type: 'Feature', id: id, geometry: collection.features[0].geometry, properties: props }
+
+        const geomHashNew = computeGeometryHash(feature.geometry);
+
+        if (!cached) {
+            addList.push(feature);
+        } else if (geomHashNew !== (cached.geomHash || 0)) {
+            // If hashes differ, perform a deep-equality check using float epsilon
+            // to avoid false positives caused by float32 truncation.
+            try {
+                if (!geometryEquals(feature.geometry, cached.feature.geometry)) {
+                    updateFullList.push(feature);
+                    updateIds.add(idStr);
+                }
+            } catch (e) {
+                updateFullList.push(feature);
+                updateIds.add(idStr);
+            }
+        }
+
+        pendingCacheEntries.set(idStr, { feature, rawHash, geomHash: geomHashNew });
+        newFeatures.push(feature);
     }
 
     // If a promoteId was provided by the sender, ensure each feature has that property set to its id
     const promoteId = data.promoteId;
     if (promoteId) {
-        for (const f of geojson.features) {
+        for (const f of newFeatures) {
             if (!f.properties) f.properties = {};
             if (f.id != null && (f.properties[promoteId] === undefined || f.properties[promoteId] === null)) {
                 f.properties[promoteId] = f.id;
@@ -394,50 +358,20 @@ onmessage = e => {
             _cacheSize = incoming.cacheSize;
         }
 
-        const newFeatures = geojson.features || [];
+        const finalFeatures = (newFeatures && newFeatures.length) ? newFeatures : (geojson.features || []);
 
         if (_cache.size === 0) {
-            // initial run: seed cache and return whole geojson
-            for (const f of newFeatures) {
-                if (f && f.id != null) {
-                    try {
-                        const gh = computeGeometryHash(f.geometry);
-                        _cache.set(String(f.id), { feature: f, geomHash: gh, ts: Date.now() });
-                    } catch (e) {
-                        _cache.set(String(f.id), { feature: f, geomHash: 0, ts: Date.now() });
-                    }
-                    // enforce size as we seed
-                    while (_cache.size > _cacheSize) {
-                        const oldest = _cache.keys().next();
-                        if (oldest.done) break;
-                        _cache.delete(oldest.value);
-                    }
+            // initial run: seed cache using pendingCacheEntries when available
+            for (const [idStr, entry] of pendingCacheEntries.entries()) {
+                try {
+                    _cache.set(idStr, { feature: entry.feature, geomHash: entry.geomHash, rawHash: entry.rawHash, ts: Date.now() });
+                } catch (e) {
+                    _cache.set(idStr, { feature: entry.feature, geomHash: entry.geomHash || 0, rawHash: entry.rawHash || 0, ts: Date.now() });
                 }
             }
-            const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(newFeatures || [], { pool: _abPool });
+            const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(finalFeatures || [], { pool: _abPool });
             postMessage({ type: 'geojson_bin', meta, keys, propsBuf: propsBuffer.buffer, coords: coordsArray.buffer }, [propsBuffer.buffer, coordsArray.buffer]);
             return;
-        }
-
-        // subsequent runs: diff against cache
-        const addList = [];
-        const updateFullList = [];
-        const updateIds = new Set();
-
-            for (const f of newFeatures) {
-            if (!f || f.id == null) continue;
-            const id = String(f.id);
-            const cached = _cache.get(id);
-            if (!cached) {
-                addList.push(f);
-            } else {
-                let geomHash = 0;
-                try { geomHash = computeGeometryHash(f.geometry); } catch (e) { geomHash = 0; }
-                if (geomHash !== (cached.geomHash || 0)) {
-                    updateFullList.push(f);
-                    updateIds.add(id);
-                }
-            }
         }
 
         // compute evictions needed after adding
@@ -497,22 +431,125 @@ onmessage = e => {
             return diff;
         });
 
-        // set pending diff so we apply it on ack (store full features for commit)
-        _pendingDiff = { addList, updateList: updateFullList, removeList };
+        // prepare pending diff entries including rawHash and geomHash so the
+        // main-thread ack can commit cache entries without recomputing hashes.
+        const addEntries = addList.map(f => {
+            const e = pendingCacheEntries.get(String(f.id));
+            if (e) return { feature: e.feature, rawHash: e.rawHash, geomHash: e.geomHash };
+            try { const gh = computeGeometryHash(f.geometry); return { feature: f, rawHash: gh, geomHash: gh }; } catch (err) { return { feature: f, rawHash: 0, geomHash: 0 }; }
+        });
+        const updateEntries = updateFullList.map(f => {
+            const e = pendingCacheEntries.get(String(f.id));
+            if (e) return { feature: e.feature, rawHash: e.rawHash, geomHash: e.geomHash };
+            try { const gh = computeGeometryHash(f.geometry); return { feature: f, rawHash: gh, geomHash: gh }; } catch (err) { return { feature: f, rawHash: 0, geomHash: 0 }; }
+        });
 
-        const diffObj = {};
-        if (removeList.length) {
-            // if we're evicting the entire cache, use removeAll for efficiency
-            if (_cache.size > 0 && removeList.length >= _cache.size) {
-                diffObj.removeAll = true;
-            } else {
-                diffObj.remove = removeList;
+        // set pending diff so we apply it on ack (store entries with hashes)
+        _pendingDiff = { addList: addEntries, updateList: updateEntries, removeList };
+
+        // Build a binary-transferable diff message. We encode add/update feature
+        // lists using the compact binary format (meta/keys/propsBuf/coords) and
+        // send property diffs (updateDiffs) as a small JSON array.
+        try {
+            const msg = { type: 'geojson_diff_bin' };
+            // removals
+            if (removeList.length) {
+                if (_cache.size > 0 && removeList.length >= _cache.size) {
+                    msg.removeAll = true;
+                } else {
+                    msg.removeList = removeList;
+                }
+            }
+
+            const transfer = [];
+
+            // encode adds
+            if (addList.length) {
+                const { meta: addMeta, keys: addKeys, propsBuffer: addPropsBuf, coordsArray: addCoords } = encodeFeaturesBinary(addList || [], { pool: _abPool });
+                msg.add = { meta: addMeta, keys: addKeys, propsBuf: addPropsBuf.buffer, coords: addCoords.buffer };
+                if (addPropsBuf && addPropsBuf.buffer) transfer.push(addPropsBuf.buffer);
+                if (addCoords && addCoords.buffer) transfer.push(addCoords.buffer);
+            }
+
+            // encode updates (full-feature updates)
+            if (updateFullList.length) {
+                const { meta: updMeta, keys: updKeys, propsBuffer: updPropsBuf, coordsArray: updCoords } = encodeFeaturesBinary(updateFullList || [], { pool: _abPool });
+                msg.update = { meta: updMeta, keys: updKeys, propsBuf: updPropsBuf.buffer, coords: updCoords.buffer };
+                if (updPropsBuf && updPropsBuf.buffer) transfer.push(updPropsBuf.buffer);
+                if (updCoords && updCoords.buffer) transfer.push(updCoords.buffer);
+            }
+
+            if (updateDiffs.length) {
+                // compact property diffs: build a shared keys table and a
+                // concatenated props buffer with offsets to avoid cloning large
+                // JS objects for property updates.
+                const upKeys = [];
+                const upKeyIndex = new Map();
+                const upChunks = [];
+                let upOffset = 0;
+                const updateMeta = updateDiffs.map(d => {
+                    const entry = { id: d.id };
+                    if (d.removeAllProperties) entry.removeAllProperties = true;
+                    if (Array.isArray(d.removeProperties) && d.removeProperties.length) {
+                        entry.removeProperties = d.removeProperties.map(k => {
+                            let ki = upKeyIndex.get(k);
+                            if (ki === undefined) { ki = upKeys.length; upKeys.push(k); upKeyIndex.set(k, ki); }
+                            return ki;
+                        });
+                    }
+                    if (Array.isArray(d.addOrUpdateProperties) && d.addOrUpdateProperties.length) {
+                        entry.addOrUpdate = d.addOrUpdateProperties.map(p => {
+                            const k = p.key;
+                            let ki = upKeyIndex.get(k);
+                            if (ki === undefined) { ki = upKeys.length; upKeys.push(k); upKeyIndex.set(k, ki); }
+                            const valJson = JSON.stringify(p.value);
+                            const enc = new TextEncoder().encode(valJson);
+                            upChunks.push(enc);
+                            const off = upOffset;
+                            const len = enc.length;
+                            upOffset += len;
+                            return [ki, off, len];
+                        });
+                    }
+                    return entry;
+                });
+                let upPropsBuf = null;
+                if (upOffset > 0) {
+                    const buf = _abPool.rent(upOffset || 1);
+                    upPropsBuf = new Uint8Array(buf, 0, upOffset);
+                    let ppos = 0;
+                    for (const c of upChunks) {
+                        upPropsBuf.set(c, ppos);
+                        ppos += c.length;
+                    }
+                } else {
+                    upPropsBuf = new Uint8Array(0);
+                }
+                msg.updateDiffsMeta = updateMeta;
+                msg.updateKeys = upKeys;
+                if (upPropsBuf && upPropsBuf.buffer && upPropsBuf.byteLength) {
+                    msg.updatePropsBuf = upPropsBuf.buffer;
+                    transfer.push(upPropsBuf.buffer);
+                }
+            }
+
+            postMessage(msg, transfer);
+            return;
+        } catch (err) {
+            // if binary encoding fails, fallback to JS diff
+            try {
+                const diffObj = {};
+                if (removeList.length) {
+                    if (_cache.size > 0 && removeList.length >= _cache.size) diffObj.removeAll = true; else diffObj.remove = removeList;
+                }
+                if (addList.length) diffObj.add = addList;
+                if (updateDiffs.length) diffObj.update = updateDiffs;
+                postMessage({ type: 'geojson_diff', diff: diffObj });
+                return;
+            } catch (err2) {
+                // give up and send JSON fallback
             }
         }
-        if (addList.length) diffObj.add = addList;
-        if (updateDiffs.length) diffObj.update = updateDiffs;
-
-        postMessage({ type: 'geojson_diff', diff: diffObj });
         return;
     } catch (err) {
         // fallback: send JSON string as transferable
