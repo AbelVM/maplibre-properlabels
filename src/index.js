@@ -2,7 +2,7 @@ import Protobuf from 'pbf';
 import { VectorTile } from '@mapbox/vector-tile';
 import tileToProtobuf from 'vt-pbf';
 import MinionWorker from './worker.js?worker&inline';
-import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool } from './utils.js';
+import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool, textEncoder, textDecoder } from './utils.js';
 export default class ProperLabels {
 
     constructor(options) {
@@ -105,7 +105,7 @@ export default class ProperLabels {
                             const upKeys = msg.updateKeys || [];
                             const upPropsBuf = msg.updatePropsBuf !== undefined ? msg.updatePropsBuf : null;
                             const upPropsBytes = upPropsBuf ? (upPropsBuf instanceof Uint8Array ? upPropsBuf : new Uint8Array(upPropsBuf)) : new Uint8Array(0);
-                            const decoder = new TextDecoder();
+                            const decoder = textDecoder;
                             for (const meta of msg.updateDiffsMeta) {
                                 const d = { id: meta.id };
                                 if (meta.removeAllProperties) d.removeAllProperties = true;
@@ -169,7 +169,7 @@ export default class ProperLabels {
             } else if (msg.type === 'geojson' && msg.payload) {
                 try {
                     const buf = msg.payload instanceof Uint8Array ? msg.payload.buffer : msg.payload;
-                    const text = new TextDecoder().decode(buf);
+                    const text = textDecoder.decode(buf);
                     const obj = JSON.parse(text);
                     this.gjsource.setData(obj);
                 } catch (err) {
@@ -231,11 +231,10 @@ export default class ProperLabels {
                                 } catch (err) {
                                     // fallback to previous transferable JSON encoding
                                     try {
-                                        const encoder = new TextEncoder();
                                         // attach promoteId so worker can populate promoted id property
                                         const payload = Object.assign({}, this._pendingPost, { promoteId: this.fid });
                                         const json = JSON.stringify(payload);
-                                        const encoded = encoder.encode(json);
+                                        const encoded = textEncoder.encode(json);
                                         this.minion.postMessage({ type: 'features', payload: encoded.buffer }, [encoded.buffer]);
                                     } catch (err2) {
                                         const payload = Object.assign({}, this._pendingPost, { promoteId: this.fid });

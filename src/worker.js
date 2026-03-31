@@ -4,7 +4,7 @@ import { flatten } from "@turf/flatten";
 import polylabel from 'polylabel';
 import { pointOnFeature } from "@turf/point-on-feature";
 import { simplify } from "@turf/simplify";
-import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool } from './utils.js';
+import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool, textEncoder, textDecoder } from './utils.js';
 
 const _abPool = new ArrayBufferPool();
 
@@ -151,20 +151,20 @@ function computeGroupRawHash(group) {
         // include feature id as part of raw signature
         h = _hashString(h, f && f.id != null ? String(f.id) : '');
         if (f && f.geometry) h = _fnv1aUpdateUint32(h, computeGeometryHash(f.geometry));
-        if (f && f.properties) {
-            const keys = Object.keys(f.properties).sort();
-            for (const k of keys) {
-                h = _hashString(h, k);
-                const v = f.properties[k];
-                if (v == null) {
-                    h = _fnv1aUpdateUint32(h, 0);
-                } else if (typeof v === 'number') {
-                    h = _hashNumber(h, v);
-                } else {
-                    h = _hashString(h, String(v));
+            if (f && f.properties) {
+                // iterate property keys in insertion order to avoid per-feature sort allocations
+                for (const k of Object.keys(f.properties)) {
+                    h = _hashString(h, k);
+                    const v = f.properties[k];
+                    if (v == null) {
+                        h = _fnv1aUpdateUint32(h, 0);
+                    } else if (typeof v === 'number') {
+                        h = _hashNumber(h, v);
+                    } else {
+                        h = _hashString(h, String(v));
+                    }
                 }
             }
-        }
     }
     return h;
 }
@@ -237,7 +237,7 @@ onmessage = e => {
     if (incoming && incoming.type === 'features' && incoming.payload) {
         try {
             const buf = incoming.payload instanceof Uint8Array ? incoming.payload.buffer : incoming.payload;
-            const text = new TextDecoder().decode(buf);
+            const text = textDecoder.decode(buf);
             incoming = JSON.parse(text);
         } catch (err) {
             incoming = {};
@@ -503,7 +503,7 @@ onmessage = e => {
                             let ki = upKeyIndex.get(k);
                             if (ki === undefined) { ki = upKeys.length; upKeys.push(k); upKeyIndex.set(k, ki); }
                             const valJson = JSON.stringify(p.value);
-                            const enc = new TextEncoder().encode(valJson);
+                            const enc = textEncoder.encode(valJson);
                             upChunks.push(enc);
                             const off = upOffset;
                             const len = enc.length;
@@ -554,9 +554,8 @@ onmessage = e => {
     } catch (err) {
         // fallback: send JSON string as transferable
         try {
-            const encoder = new TextEncoder();
             const json = JSON.stringify(geojson);
-            const encoded = encoder.encode(json);
+            const encoded = textEncoder.encode(json);
             postMessage({ type: 'geojson', payload: encoded.buffer }, [encoded.buffer]);
         } catch (err2) {
             postMessage(geojson);

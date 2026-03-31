@@ -41,6 +41,10 @@ export class ArrayBufferPool {
     }
 }
 
+// Shared text encoder/decoder reused across modules to avoid repeated allocations
+export const textEncoder = new TextEncoder();
+export const textDecoder = new TextDecoder();
+
 // One-time warning flag for decoding invalid floats
 let _decodeInvalidFloatWarned = false;
 // Key-indexed properties encoder/decoder. encodeFeaturesBinary supports optional
@@ -49,7 +53,7 @@ export function encodeFeaturesBinary(features, options = {}) {
     const meta = [];
     const coordsList = [];
     const propChunks = [];
-    const encoder = new TextEncoder();
+    // reuse shared encoder to reduce allocations
     const keys = [];
     const keyIndex = new Map();
     let floatOffset = 0;
@@ -119,7 +123,7 @@ export function encodeFeaturesBinary(features, options = {}) {
                 keyIndex.set(k, ki);
             }
             const valJson = JSON.stringify(props[k]);
-            const enc = encoder.encode(valJson);
+            const enc = textEncoder.encode(valJson);
             propChunks.push(enc);
             propList.push([ki, propByteOffset, enc.length]);
             propByteOffset += enc.length;
@@ -183,7 +187,7 @@ export function encodeFeaturesBinary(features, options = {}) {
 export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
     const coords = coordsBuf instanceof Float32Array ? coordsBuf : new Float32Array(coordsBuf);
     const propsBytes = propsBuf instanceof Uint8Array ? propsBuf : (propsBuf ? new Uint8Array(propsBuf) : new Uint8Array(0));
-    const decoder = new TextDecoder();
+    // reuse shared decoder to reduce allocations
     const features = [];
     for (let i = 0; i < (meta.length || 0); i++) {
         const m = meta[i] || {};
@@ -194,7 +198,7 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
                 const [ki, off, len] = p;
                 try {
                     const slice = propsBytes.subarray(off, off + len);
-                    props[keys[ki]] = JSON.parse(decoder.decode(slice));
+                    props[keys[ki]] = JSON.parse(textDecoder.decode(slice));
                 } catch (err) {
                     // ignore property parse errors for robustness
                 }
