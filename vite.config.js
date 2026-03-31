@@ -16,8 +16,8 @@ export default defineConfig({
         return `${label}.${format}.js`
       }
     },
-    minify: 'terser',
     assetsInlineLimit: 0,
+    minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: true,

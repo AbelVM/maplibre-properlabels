@@ -249,7 +249,7 @@ export default class ProperLabels {
                     tolerance: t
                 };
                 this._pendingPost = data;
-                    if (this._postTimer == null) {
+                if (this._postTimer == null) {
                     this._postTimer = setTimeout(() => {
                         try {
                             if (this._pendingPost) {
@@ -360,9 +360,9 @@ export default class ProperLabels {
 
 maplibregl.VectorTileSource.prototype.ProperLabels = function (options) {
     const opts = Object.assign({}, options, {
-            map: this._map,
-            source: this
-        });
+        map: this._map,
+        source: this
+    });
     if (!this._proper) {
         this._proper = new ProperLabels(opts);
     }
