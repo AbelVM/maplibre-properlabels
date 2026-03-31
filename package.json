@@ -1,6 +1,6 @@
 {
   "name": "maplibre-properlabels",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "tiny maplibre plugin to place labels properly for tiled geometries",
   "keywords": [
     "maplibre",

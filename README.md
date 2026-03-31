@@ -39,30 +39,89 @@ or with an import elsewhere
 
 ### Use
 
-The available parameters are
+Initialize the plugin once the map is ready. The constructor accepts an options object:
 
-| name | type |  description | optional | default |
+| name | type | description | optional | default |
 |---|---|---|---|---|
-| layer_name | string | Name of the vector layer to be labeled |   |   |
-| label_style | json  | Maplibre Style for the labels |   |   |
-| label_id | string | Unique property per feature | x | feature ID |
+| map | Maplibre Map instance | The map instance | required | — |
+| source | string | Vector tile source id, or a VectorTileSource object | required | — |
+| sourceLayer | string | The inner layer name inside the vector tiles to label | required | — |
+| fid | string | Property name to promote as feature id (promoteId) | optional | `id` |
+| tolerance | number | Simplify / polylabel precision (degrees) | optional | `0.00001` |
+| cacheSize | number | Worker-side cache capacity (entries) | optional | `10000` |
+| postDelay | number | Debounce delay (ms) before posting features to worker | optional | `100` |
 
-You can enable the `proper labels` by initializing them once the map is loaded
+Example (see `example/index.html`):
 
 ```javascript
 map.on('load', () => {
-    map.addProperLabels({
-        'layer_name': 'countries-fill',
-        'label_style': label_style
+    const proper = new ProperLabels({
+        map,
+        source: 'demotiles',       // can also be a VectorTileSource object
+        sourceLayer: 'countries',
+        fid: 'fid',                // optional, property used as promoted id
+        tolerance: 0.00001,
+        cacheSize: 10000
+    });
+
+    // The plugin creates a GeoJSON source named `${sourceId}-proper`.
+    // Use it when adding a label layer:
+    map.addLayer({
+        id: 'countries-labels-proper',
+        type: 'symbol',
+        source: 'demotiles-proper',
+        layout: {
+            'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
+            'text-size': 12
+        },
+        paint: { 'text-color': '#ff0000' }
     });
 });
 ```
 
 ## How does it work
 
-1. It takes advantage of the improved [queryRenderedFeatures](https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#queryrenderedfeatures) in Maplibre GL JS v5.x to give a smooth experience, while retrieving all the features of the `layer_name` layer in the viewport for every movement of the user
-2. Then, the result is grouped by `label_id`, which should uniquely identify the features. In case the feature geometry extends across N tiles, the corresponding `label_id` will have N separate features, one per each part
-3. Now, we build a [FeatureCollection](https://datatracker.ietf.org/doc/html/rfc7946#section-3.3) of the parts for each `label_id`
-4. Then, using [turf.js/pointOnFeature](https://turfjs.org/docs/api/pointOnFeature), we get one point per `label_id` that lies within the feature geometry
-5. Finally, we collect all the points in a [FeatureCollection](https://datatracker.ietf.org/doc/html/rfc7946#section-3.3) and serve as data for a [GeoJSON Source](https://maplibre.org/maplibre-gl-js/docs/API/classes/GeoJSONSource/) and a layer that feeds on that source, and it's styled by `label_style`.
-   
+1. On map movements the plugin queries the vector-tile source for all features in the viewport using `map.querySourceFeatures(sourceId, { sourceLayer })`.
+2. Features are grouped by the promoted id (`fid`) so every logical feature (which may be split across tiles) is processed as a single group.
+3. The main thread encodes the groups into a compact binary transferable (Float32 coordinate buffer + key-indexed properties buffer) and posts it to a worker. An `ArrayBufferPool` is used to reduce allocations.
+4. The worker decodes the binary payload, runs geometry processing (simplify, union/flatten/combine for multi-part groups, and a safe `polylabel` fallback), and computes a short raw-group signature and geometry hashes to detect unchanged items.
+5. The worker keeps a cache of processed features and emits incremental diffs (adds/updates/removes). Add/update feature lists are encoded as binary transferables and property diffs are compacted into a shared keys table + props buffer to minimize structured-clone cost.
+6. The main thread decodes the binary diffs, reconstructs a canonical `GeoJSONSourceDiff` and applies it with `source.updateData(diff)`. A short handshake (`diff_ack`) lets the worker commit pending changes to its cache only after the main thread successfully applied the diff.
+
+This design keeps the main thread lightweight by transferring buffers, applying incremental diffs, and avoiding expensive geometry work on the UI thread.
+## Example legend
+
+The live example includes a legend to help visual debugging:
+
+- Blue polygons: not clipped (normal features)
+- Green polygons: clipped (features that touch tile edges)
+- Black labels: MapLibre native labels (from the vector tiles)
+- Red labels: "proper" labels produced by this plugin (de-duplicated and placed)
+- Red lines: tile boundaries (when `map.showTileBoundaries = true`)
+
+## Local development
+
+To run the example locally:
+
+1. Install dependencies
+
+```bash
+npm install
+```
+
+2. Start the dev server (Vite serves the example at `/example`)
+
+```bash
+npm run dev
+# open http://localhost:5173/example/
+```
+
+Or build the package and open `example/index.html` after `npm run build`.
+
+## Performance & implementation notes
+
+- The plugin offloads heavy geometry processing to a worker and uses compact binary transferables (Float32 coords + key-indexed properties) to minimize main-thread cost.
+- Diffs between runs are encoded as binary transfer messages so `updateData` can be applied with minimal structured-clone overhead.
+- Geometry hashing uses a lightweight Float32-based hash with a small deep-equality fallback to avoid unnecessary recomputation.
+- For debugging, enable tile boundaries with `map.showTileBoundaries = true` and use the example legend to correlate labels and clipped geometry.
+

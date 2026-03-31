@@ -11,20 +11,21 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/index.js'),
       name: 'ProperLabels',
       formats: ['es', 'cjs', 'umd'],
-          fileName: (format) => {
-            if (format === 'umd') return `${label}.js`
-            return `${label}.${format}.js`
-          },
-      minify: 'terser',
-      assetsInlineLimit: 0,
-      terserOptions: {
-        compress: {
-          drop_console: true,
-          drop_debugger: true
-        },
-        format: {
-          comments: false
-        }
+      fileName: (format) => {
+        if (format === 'umd') return `${label}.js`
+        return `${label}.${format}.js`
+      }
+    },
+    // Enable terser minification and configure terser options at the build level
+    minify: 'terser',
+    assetsInlineLimit: 0,
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      },
+      format: {
+        comments: false
       }
     }
   }

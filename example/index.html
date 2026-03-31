@@ -20,6 +20,7 @@
             height: 100%;
             margin: 0;
             padding: 0;
+            background-color: #eee;
         }
 
         #info {
@@ -34,6 +35,8 @@
             font-size: 13px;
             color: #111;
             max-width: 360px;
+            box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
         }
 
         #info pre {
@@ -53,11 +56,32 @@
             padding: 6px 10px;
             font-size: 13px
         }
+        /* Legend styles */
+        #info .legend-title { font-weight: 700; margin-bottom: 6px; }
+        #info ul { list-style: none; padding: 0; margin: 6px 0 0 0; }
+        #info li { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; color: #111; }
+        .swatch { width: 18px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,0.06); }
+        .swatch.blue { background: #e6eef8; border-color: #9bb6d8; }
+        .swatch.green { background: #e6f8ee; border-color: #9bb6d8; }
+        .label-sw { display: inline-block; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+        .label-sw.black { color: #000; background: #ffffff; border: 1px solid rgba(0,0,0,0.08); }
+        .label-sw.red { color: #ff0000; background: #ffffff; border: 1px solid rgba(255,0,0,0.15); }
+        .line-sw { width: 22px; height: 2px; display: inline-block; background: #ff0000; border-radius: 2px; }
     </style>
 </head>
 
 <body>
     <div id="map"></div>
+    <div id="info" role="region" aria-label="Map legend">
+        <div class="legend-title">Legend</div>
+        <ul>
+            <li><span class="swatch blue" aria-hidden="true"></span> Blue polygons: not clipped</li>
+            <li><span class="swatch green" aria-hidden="true"></span> Green polygons: clipped</li>
+            <li><span class="label-sw black" aria-hidden="true">Label</span> Black labels: MapLibre native labels for polygons</li>
+            <li><span class="label-sw red" aria-hidden="true">Label</span> Red labels: the proper labels</li>
+            <li><span class="line-sw" aria-hidden="true"></span> Red lines: tile boundaries</li>
+        </ul>
+    </div>
     <script>
         const map = new maplibregl.Map({
             container: 'map',
