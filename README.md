@@ -1,6 +1,6 @@
 # maplibre-proper-labels
 
-[![npm version](https://img.shields.io/npm/v/maplibre-properlabels.svg)](https://www.npm.com/package/maplibre-properlabels) [![jsDelivr](https://img.shields.io/jsdelivr/npm/v/maplibre-properlabels.svg)](https://www.jsdelivr.com/package/npm/maplibre-properlabels)
+[![npm version](https://img.shields.io/npm/v/maplibre-properlabels.svg)](https://www.npm.com/package/maplibre-properlabels) [![jsDelivr](https://img.shields.io/jsdelivr/npm/hy/maplibre-properlabels)](https://www.jsdelivr.com/package/npm/maplibre-properlabels)
 
 `Maplibre GL JS` plugin for proper labelling of polygons that extend across tiles.
 
@@ -18,7 +18,7 @@ https://abelvm.github.io/maplibre-properlabels/example/
 Any tiled-sourced vector layer in MapLibre lacks proper labelling, as every geometry that extends through several tiles has several labels, one per geometry portion.
 
 This just grin my gears
-
+https://img.shields.io/jsdelivr/npm/hy/maplibre-properlabels
 ![img](grin.jpg)
 
 This is inspired by https://github.com/maplibre/maplibre-tile-spec/issues/710 and my stubbornness
