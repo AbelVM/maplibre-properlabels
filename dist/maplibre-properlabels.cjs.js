@@ -3026,7 +3026,7 @@ onmessage = (t) => {
       s.type === "MultiPolygon" ? T = Fe(u) : T = { type: "FeatureCollection", features: [u] }, T = Tt(T, { tolerance: i, mutate: o });
     } else
       T = { type: "FeatureCollection", features: L.map((s) => ({ type: "Feature", id: b, geometry: s.geometry, properties: F })) }, T.features.some((s) => s.geometry.type === "MultiPolygon") && (T = Fe(T)), T = Tt(T, { tolerance: i, mutate: o }), L.some((s) => s.properties && s.properties.clipped) && (T = wr(T)), T.type === "Feature" ? T.geometry.type === "MultiPolygon" ? T = Fe(T) : T = { type: "FeatureCollection", features: [T] } : T.features.some((s) => s.geometry.type === "MultiPolygon") && (T = Fe(T));
-    T.features.forEach((s) => (s.id = b, s.geometry.type === "Polygon" ? s.geometry = nn(s, i) : console.log("Unexpected geometry type after union/simplify/flatten for id:" + b + " - type:" + s.geometry.type), s)), T = xr(T);
+    T.features = T.features.map((s) => (s.id = b, s.geometry.type === "Polygon" ? s.geometry = nn(s, i) : console.log("Unexpected geometry type after union/simplify/flatten for id:" + b + " - type:" + s.geometry.type), s)), T = xr(T);
     const C = { type: "Feature", id: b, geometry: T.features[0].geometry, properties: F }, k = xe(C.geometry);
     if (!w)
       h.push(C);
