@@ -45,6 +45,11 @@ export class ArrayBufferPool {
 export const textEncoder = new TextEncoder();
 export const textDecoder = new TextDecoder();
 
+// Shared key table to avoid per-encode key Map allocations. This lives per
+// module instance (main thread or worker) and grows as new property keys are
+// encountered to reduce repeated Map/Array allocations across encodes.
+export const sharedKeyTable = { keys: [], index: new Map() };
+
 // One-time warning flag for decoding invalid floats
 let _decodeInvalidFloatWarned = false;
 // Key-indexed properties encoder/decoder. encodeFeaturesBinary supports optional
@@ -54,8 +59,16 @@ export function encodeFeaturesBinary(features, options = {}) {
     const coordsList = [];
     const propChunks = [];
     // reuse shared encoder to reduce allocations
-    const keys = [];
-    const keyIndex = new Map();
+    const useShared = !!options.useSharedKeyTable;
+    let keys;
+    let keyIndex;
+    if (useShared) {
+        keys = sharedKeyTable.keys;
+        keyIndex = sharedKeyTable.index;
+    } else {
+        keys = [];
+        keyIndex = new Map();
+    }
     let floatOffset = 0;
     let propByteOffset = 0;
 
@@ -145,8 +158,8 @@ export function encodeFeaturesBinary(features, options = {}) {
         if (propsUint8.byteLength < propByteOffset) {
             propsUint8 = new Uint8Array(propByteOffset);
         }
-    } else if (options.pool) {
-        const buf = options.pool.rent(propByteOffset || 1);
+    } else if (options.pool && propByteOffset > 0) {
+        const buf = options.pool.rent(propByteOffset);
         propsUint8 = new Uint8Array(buf, 0, propByteOffset);
     } else {
         propsUint8 = new Uint8Array(propByteOffset);
@@ -171,8 +184,8 @@ export function encodeFeaturesBinary(features, options = {}) {
             coordsArray = new Float32Array(numFloats);
         }
         if (coordsArray.length < numFloats) coordsArray = new Float32Array(numFloats);
-    } else if (options.pool) {
-        const buf = options.pool.rent(numFloats * 4 || 4);
+    } else if (options.pool && numFloats > 0) {
+        const buf = options.pool.rent(numFloats * 4);
         coordsArray = new Float32Array(buf, 0, numFloats);
     } else {
         coordsArray = new Float32Array(numFloats);
@@ -300,5 +313,118 @@ export function decodeFeaturesBinary(meta, propsBuf, coordsBuf, keys) {
         features.push({ type: 'Feature', id, geometry, properties: safeProps });
     }
     return features;
+}
+
+// Geometry hashing utilities (FNV-1a over Float32 representation for speed)
+const _hashBuf = new ArrayBuffer(8);
+const _hashView = new DataView(_hashBuf);
+const _hashBuf32 = new ArrayBuffer(4);
+const _hashView32 = new DataView(_hashBuf32);
+function _fnv1aInit() { return 2166136261 >>> 0; }
+function _fnv1aUpdateUint32(h, v) { h ^= v >>> 0; h = Math.imul(h, 16777619) >>> 0; return h; }
+function _hashNumber(h, num) {
+    const n = Number(num) || 0;
+    _hashView.setFloat64(0, n, true);
+    h = _fnv1aUpdateUint32(h, _hashView.getUint32(0, true));
+    h = _fnv1aUpdateUint32(h, _hashView.getUint32(4, true));
+    return h;
+}
+
+// Faster 32-bit float hashing used for geometry coordinates
+function _hashNumber32(h, num) {
+    const n = Number(num) || 0;
+    _hashView32.setFloat32(0, n, true);
+    h = _fnv1aUpdateUint32(h, _hashView32.getUint32(0, true));
+    return h;
+}
+function _hashString(h, s) {
+    if (!s) return h;
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        h = _fnv1aUpdateUint32(h, code & 0xFFFF);
+    }
+    return h;
+}
+
+export function computeGeometryHash(geom) {
+    if (!geom) return 0;
+    let h = _fnv1aInit();
+    h = _hashString(h, geom.type || '');
+    const type = geom.type;
+    if (type === 'Point') {
+        const c = geom.coordinates || [];
+        h = _hashNumber32(h, c[0]);
+        h = _hashNumber32(h, c[1]);
+        return h;
+    }
+    if (type === 'LineString' || type === 'MultiPoint') {
+        const coords = geom.coordinates || [];
+        for (const p of coords) {
+            h = _hashNumber32(h, p && p[0]);
+            h = _hashNumber32(h, p && p[1]);
+        }
+        return h;
+    }
+    if (type === 'Polygon') {
+        const rings = geom.coordinates || [];
+        h = _fnv1aUpdateUint32(h, rings.length);
+        for (const ring of rings) {
+            h = _fnv1aUpdateUint32(h, ring.length || 0);
+            for (const p of ring) {
+                h = _hashNumber32(h, p && p[0]);
+                h = _hashNumber32(h, p && p[1]);
+            }
+        }
+        return h;
+    }
+    if (type === 'MultiPolygon') {
+        const polys = geom.coordinates || [];
+        h = _fnv1aUpdateUint32(h, polys.length);
+        for (const poly of polys) {
+            h = _fnv1aUpdateUint32(h, poly.length || 0);
+            for (const ring of poly) {
+                h = _fnv1aUpdateUint32(h, ring.length || 0);
+                for (const p of ring) {
+                    h = _hashNumber32(h, p && p[0]);
+                    h = _hashNumber32(h, p && p[1]);
+                }
+            }
+        }
+        return h;
+    }
+    // fallback: serialize minimal coords
+    try {
+        const coords = geom.coordinates || [];
+        for (const c of coords) {
+            if (Array.isArray(c)) {
+                h = _hashNumber32(h, c[0]);
+                h = _hashNumber32(h, c[1]);
+            } else {
+                h = _hashNumber32(h, c);
+            }
+        }
+    } catch (e) { }
+    return h;
+}
+
+// Deep-equality for geometries with a small numeric epsilon to avoid false
+// positives from float32 truncation. Used as a fallback when hashes differ.
+function _coordsEqual(a, b, eps = 1e-6) {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= eps;
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (!_coordsEqual(a[i], b[i], eps)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+export function geometryEquals(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a.type !== b.type) return false;
+    return _coordsEqual(a.coordinates, b.coordinates);
 }
 

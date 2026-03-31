@@ -2,7 +2,7 @@ import Protobuf from 'pbf';
 import { VectorTile } from '@mapbox/vector-tile';
 import tileToProtobuf from 'vt-pbf';
 import MinionWorker from './worker.js?worker&inline';
-import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool, textEncoder, textDecoder } from './utils.js';
+import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool, textEncoder, textDecoder, computeGeometryHash } from './utils.js';
 export default class ProperLabels {
 
     constructor(options) {
@@ -18,6 +18,7 @@ export default class ProperLabels {
         // worker (use transferable ArrayBuffer for messages)
         this.minion = new MinionWorker();
         this._abPool = new ArrayBufferPool();
+        this._lastGeomHashes = new Map();
         this.minion.onmessage = e => {
             const msg = e && e.data;
             if (!msg) return;
@@ -27,6 +28,14 @@ export default class ProperLabels {
                     const propsBuf = msg.propsBuf !== undefined ? msg.propsBuf : null;
                     const features = decodeFeaturesBinary(msg.meta || [], propsBuf, coordsBuf, msg.keys || []);
                     this.gjsource.setData({ type: 'FeatureCollection', features });
+                    // update main-side geometry hash cache
+                    try {
+                        for (const f of features) {
+                            if (f && f.id != null) {
+                                try { this._lastGeomHashes.set(String(f.id), computeGeometryHash(f.geometry)); } catch (e) { this._lastGeomHashes.set(String(f.id), 0); }
+                            }
+                        }
+                    } catch (e) { }
                     // return buffers to pool for reuse
                     try { if (propsBuf) this._abPool.release(propsBuf instanceof ArrayBuffer ? propsBuf : propsBuf.buffer); } catch (e) { }
                     try { if (coordsBuf) this._abPool.release(coordsBuf instanceof ArrayBuffer ? coordsBuf : coordsBuf.buffer); } catch (e) { }
@@ -154,6 +163,26 @@ export default class ProperLabels {
                     if (this.gjsource && typeof this.gjsource.updateData === 'function') {
                         try {
                             this.gjsource.updateData(diffObj);
+                            // update main-side geometry hash cache for adds/updates/removes
+                            try {
+                                if (addFeatures && addFeatures.length) {
+                                    for (const f of addFeatures) {
+                                        if (f && f.id != null) {
+                                            try { this._lastGeomHashes.set(String(f.id), computeGeometryHash(f.geometry)); } catch (e) { this._lastGeomHashes.set(String(f.id), 0); }
+                                        }
+                                    }
+                                }
+                                if (updateFeatures && updateFeatures.length) {
+                                    for (const f of updateFeatures) {
+                                        if (f && f.id != null) {
+                                            try { this._lastGeomHashes.set(String(f.id), computeGeometryHash(f.geometry)); } catch (e) { this._lastGeomHashes.set(String(f.id), 0); }
+                                        }
+                                    }
+                                }
+                                if (removeList && removeList.length) {
+                                    for (const id of removeList) this._lastGeomHashes.delete(String(id));
+                                }
+                            } catch (e) { }
                             try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) { }
                         } catch (err) {
                             try { this.minion.postMessage({ type: 'request_full' }); } catch (e) { }
@@ -223,11 +252,36 @@ export default class ProperLabels {
                     this._postTimer = setTimeout(() => {
                         try {
                             if (this._pendingPost) {
+                                // quick-change detection: compute geometry hashes and
+                                // avoid sending entire payloads when nothing changed.
+                                const featuresForSig = this._pendingPost.features || [];
+                                const newHashes = new Map();
+                                let allSame = true;
+                                if (this._lastGeomHashes && this._lastGeomHashes.size === featuresForSig.length) {
+                                    for (const f of featuresForSig) {
+                                        const idStr = String(f.id == null ? '' : f.id);
+                                        let gh = 0;
+                                        try { gh = computeGeometryHash(f.geometry); } catch (e) { gh = 0; }
+                                        newHashes.set(idStr, gh);
+                                        if (this._lastGeomHashes.get(idStr) !== gh) { allSame = false; break; }
+                                    }
+                                } else {
+                                    allSame = false;
+                                }
+                                if (allSame) {
+                                    // nothing changed since last send — skip
+                                    this._lastGeomHashes = newHashes;
+                                    return;
+                                }
                                 try {
                                     // encode geometries into a compact Float32Array + key-indexed properties buffer (use pool)
-                                    const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(this._pendingPost.features || [], { pool: this._abPool });
-                                    // send binary message with transferred properties + coordinates buffers (include cacheSize and promoteId)
-                                    this.minion.postMessage({ type: 'features_bin', meta, keys, propsBuf: propsBuffer.buffer, tolerance: this._pendingPost.tolerance, coords: coordsArray.buffer, cacheSize: this.cacheSize, promoteId: this.fid }, [propsBuffer.buffer, coordsArray.buffer]);
+                                    const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(this._pendingPost.features || [], { pool: this._abPool, useSharedKeyTable: true });
+                                    // include per-feature geometry hashes to help worker avoid false negatives
+                                    const hashObj = Object.fromEntries(newHashes);
+                                    // send binary message with transferred properties + coordinates buffers (include cacheSize, promoteId, and hashes)
+                                    this.minion.postMessage({ type: 'features_bin', meta, keys, propsBuf: propsBuffer.buffer, tolerance: this._pendingPost.tolerance, coords: coordsArray.buffer, cacheSize: this.cacheSize, promoteId: this.fid, hashes: hashObj }, [propsBuffer.buffer, coordsArray.buffer]);
+                                    // update last geometry hashes after successful post
+                                    this._lastGeomHashes = newHashes;
                                 } catch (err) {
                                     // fallback to previous transferable JSON encoding
                                     try {
@@ -254,6 +308,8 @@ export default class ProperLabels {
         this.map.refreshTiles(this.source.id);
         return this.gjsource;
     }
+
+    
 
     _protocol = async request => {
         const

@@ -150,7 +150,10 @@ function computeGroupRawHash(group) {
     for (const f of group) {
         // include feature id as part of raw signature
         h = _hashString(h, f && f.id != null ? String(f.id) : '');
-        if (f && f.geometry) h = _fnv1aUpdateUint32(h, computeGeometryHash(f.geometry));
+        if (f && f.geometry) {
+            const useHash = (f.__inGeomHash !== undefined) ? f.__inGeomHash : computeGeometryHash(f.geometry);
+            h = _fnv1aUpdateUint32(h, useHash);
+        }
         if (f && f.properties) {
             // iterate property keys in insertion order to avoid per-feature sort allocations
             for (const k of Object.keys(f.properties)) {
@@ -225,7 +228,7 @@ onmessage = e => {
     if (incoming && incoming.type === 'request_full') {
         try {
             const allFeatures = Array.from(_cache.values()).map(v => v.feature);
-            const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(allFeatures || [], { pool: _abPool });
+            const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(allFeatures || [], { pool: _abPool, useSharedKeyTable: true });
             postMessage({ type: 'geojson_bin', meta, keys, propsBuf: propsBuffer.buffer, coords: coordsArray.buffer }, [propsBuffer.buffer, coordsArray.buffer]);
         } catch (err) {
             // ignore
@@ -253,7 +256,17 @@ onmessage = e => {
             const incomingKeys = incoming.keys || [];
             const featuresFromBin = decodeFeaturesBinary(meta, propsBuf, coordsBuf, incomingKeys);
             // preserve received buffers for potential reuse when encoding the response; include cache hint
-            incoming = { features: featuresFromBin, tolerance: e.data && e.data.tolerance, promoteId: e.data && e.data.promoteId, _receivedPropsBuf: propsBuf, _receivedCoordsBuf: coordsBuf, _receivedKeys: incomingKeys, cacheSize: e.data && e.data.cacheSize };
+            const receivedHashes = e.data && e.data.hashes ? e.data.hashes : null;
+            if (receivedHashes && Array.isArray(featuresFromBin)) {
+                for (const f of featuresFromBin) {
+                    try {
+                        const idStr = String(f && f.id != null ? f.id : '');
+                        const h = receivedHashes[idStr];
+                        if (h !== undefined) f.__inGeomHash = h;
+                    } catch (e2) { }
+                }
+            }
+            incoming = { features: featuresFromBin, tolerance: e.data && e.data.tolerance, promoteId: e.data && e.data.promoteId, _receivedPropsBuf: propsBuf, _receivedCoordsBuf: coordsBuf, _receivedKeys: incomingKeys, _receivedHashes: receivedHashes, cacheSize: e.data && e.data.cacheSize };
         } catch (err) {
             // fall through to treat incoming as-is
             incoming = incoming || {};
@@ -315,10 +328,16 @@ onmessage = e => {
             if (group.some(f => f.properties && f.properties.clipped)) {
                 collection = union(collection);
             }
-            if (collection.geometry.type === 'MultiPolygon') {
-                collection = flatten(collection);
-            }else{
-                collection = { type: 'FeatureCollection', features: [collection] };
+            if (collection.type === 'Feature') {
+                if (collection.geometry.type === 'MultiPolygon') {
+                    collection = flatten(collection);
+                } else {
+                    collection = { type: 'FeatureCollection', features: [collection] };
+                }
+            } else {
+                if (collection.features.some(f => f.geometry.type === 'MultiPolygon')) {
+                    collection = flatten(collection);
+                }
             }
         }
         collection.features.forEach(f => {
@@ -479,8 +498,9 @@ onmessage = e => {
             const transfer = [];
 
             // encode adds
+            // encode adds
             if (addList.length) {
-                const { meta: addMeta, keys: addKeys, propsBuffer: addPropsBuf, coordsArray: addCoords } = encodeFeaturesBinary(addList || [], { pool: _abPool });
+                const { meta: addMeta, keys: addKeys, propsBuffer: addPropsBuf, coordsArray: addCoords } = encodeFeaturesBinary(addList || [], { pool: _abPool, useSharedKeyTable: true });
                 msg.add = { meta: addMeta, keys: addKeys, propsBuf: addPropsBuf.buffer, coords: addCoords.buffer };
                 if (addPropsBuf && addPropsBuf.buffer) transfer.push(addPropsBuf.buffer);
                 if (addCoords && addCoords.buffer) transfer.push(addCoords.buffer);
@@ -488,7 +508,7 @@ onmessage = e => {
 
             // encode updates (full-feature updates)
             if (updateFullList.length) {
-                const { meta: updMeta, keys: updKeys, propsBuffer: updPropsBuf, coordsArray: updCoords } = encodeFeaturesBinary(updateFullList || [], { pool: _abPool });
+                const { meta: updMeta, keys: updKeys, propsBuffer: updPropsBuf, coordsArray: updCoords } = encodeFeaturesBinary(updateFullList || [], { pool: _abPool, useSharedKeyTable: true });
                 msg.update = { meta: updMeta, keys: updKeys, propsBuf: updPropsBuf.buffer, coords: updCoords.buffer };
                 if (updPropsBuf && updPropsBuf.buffer) transfer.push(updPropsBuf.buffer);
                 if (updCoords && updCoords.buffer) transfer.push(updCoords.buffer);
