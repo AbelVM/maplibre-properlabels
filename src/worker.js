@@ -340,7 +340,7 @@ onmessage = e => {
                 }
             }
         }
-        collection.features.forEach(f => {
+        collection.features = collection.features.map(f => {
             f.id = id;
             if (f.geometry.type === 'Polygon') {
                 f.geometry = safePolylabel(f, tolerance);
