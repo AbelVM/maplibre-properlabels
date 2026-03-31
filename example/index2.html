@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo</title>
+    <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.21.1/dist/maplibre-gl.css' />
+    <script src='https://unpkg.com/maplibre-gl@5.21.1/dist/maplibre-gl.js'></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
+        rel="stylesheet">
+    <style>
+        html,
+        body,
+        #map {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #eee;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    demotiles: {
+                        type: 'vector',
+                        url: 'https://demotiles.maplibre.org/tiles/tiles.json',
+                        promoteId: { 'countries': 'fid' }
+                    }
+                },
+                layers: [
+                    {
+                        id: 'countries-fill',
+                        type: 'fill',
+                        source: 'demotiles',
+                        'source-layer': 'countries',
+                        paint: {
+                            'fill-color': '#e6eef8',
+                            'fill-outline-color': '#9bb6d8'
+                        }
+                    },
+                    {
+                        id: 'countries-labels',
+                        type: 'symbol',
+                        source: 'demotiles',
+                        'source-layer': 'countries',
+                        layout: {
+                            'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
+                            'text-size': 12,
+                            "text-font": ["Montserrat"]
+                        },
+                        paint: {
+                            'text-color': '#000000',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    }
+                ]
+            },
+            center: [-1.8185423452185887, 45.70324604208017],
+            zoom: 5
+        });
+
+    </script>
+</body>
+
+</html>

@@ -309,7 +309,7 @@ export default class ProperLabels {
         return this.gjsource;
     }
 
-    
+
 
     _protocol = async request => {
         const
@@ -320,7 +320,7 @@ export default class ProperLabels {
             console.warn(`Malformed URL: ${request.url}`);
             return { data: null };
         }
-        
+
         const payload = await fetch(url);
         let pbf;
         if (payload.status === 200) {
