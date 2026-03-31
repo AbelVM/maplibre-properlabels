@@ -151,20 +151,20 @@ function computeGroupRawHash(group) {
         // include feature id as part of raw signature
         h = _hashString(h, f && f.id != null ? String(f.id) : '');
         if (f && f.geometry) h = _fnv1aUpdateUint32(h, computeGeometryHash(f.geometry));
-            if (f && f.properties) {
-                // iterate property keys in insertion order to avoid per-feature sort allocations
-                for (const k of Object.keys(f.properties)) {
-                    h = _hashString(h, k);
-                    const v = f.properties[k];
-                    if (v == null) {
-                        h = _fnv1aUpdateUint32(h, 0);
-                    } else if (typeof v === 'number') {
-                        h = _hashNumber(h, v);
-                    } else {
-                        h = _hashString(h, String(v));
-                    }
+        if (f && f.properties) {
+            // iterate property keys in insertion order to avoid per-feature sort allocations
+            for (const k of Object.keys(f.properties)) {
+                h = _hashString(h, k);
+                const v = f.properties[k];
+                if (v == null) {
+                    h = _fnv1aUpdateUint32(h, 0);
+                } else if (typeof v === 'number') {
+                    h = _hashNumber(h, v);
+                } else {
+                    h = _hashString(h, String(v));
                 }
             }
+        }
     }
     return h;
 }
@@ -296,14 +296,29 @@ onmessage = e => {
         }
 
         const { clipped, ...props } = (group[0] && group[0].properties) || {};
-        let collection
+        let collection;
         if (group.length === 1) {
             const geom = group[0].geometry;
-            collection = simplify(flatten({ type: 'Feature', id: id, geometry: geom, properties: props }), { tolerance, mutate });
+            let single = { type: 'Feature', id: id, geometry: geom, properties: props };
+            if (geom.type === 'MultiPolygon') {
+                collection = flatten(single);
+            } else {
+                collection = { type: 'FeatureCollection', features: [single] };
+            }
+            collection = simplify(collection, { tolerance, mutate });
         } else {
-            collection = simplify(flatten({ type: 'FeatureCollection', features: group.map(f => ({ type: 'Feature', id: id, geometry: f.geometry, properties: props })) }), { tolerance, mutate });
+            collection = { type: 'FeatureCollection', features: group.map(f => ({ type: 'Feature', id: id, geometry: f.geometry, properties: props })) };
+            if (collection.features.some(f => f.geometry.type === 'MultiPolygon')) {
+                collection = flatten(collection);
+            }
+            collection = simplify(collection, { tolerance, mutate });
             if (group.some(f => f.properties && f.properties.clipped)) {
-                collection = flatten(union(collection));
+                collection = union(collection);
+            }
+            if (collection.geometry.type === 'MultiPolygon') {
+                collection = flatten(collection);
+            }else{
+                collection = { type: 'FeatureCollection', features: [collection] };
             }
         }
         collection.features.forEach(f => {

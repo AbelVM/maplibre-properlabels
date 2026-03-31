@@ -17,16 +17,16 @@ export default defineConfig({
       }
     },
     // Enable terser minification and configure terser options at the build level
-    minify: 'terser',
+    //minify: 'terser',
     assetsInlineLimit: 0,
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
-      },
-      format: {
-        comments: false
-      }
-    }
+    // terserOptions: {
+    //   compress: {
+    //     drop_console: true,
+    //     drop_debugger: true
+    //   },
+    //   format: {
+    //     comments: false
+    //   }
+    // }
   }
 });

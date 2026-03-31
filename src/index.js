@@ -28,10 +28,10 @@ export default class ProperLabels {
                     const features = decodeFeaturesBinary(msg.meta || [], propsBuf, coordsBuf, msg.keys || []);
                     this.gjsource.setData({ type: 'FeatureCollection', features });
                     // return buffers to pool for reuse
-                    try { if (propsBuf) this._abPool.release(propsBuf instanceof ArrayBuffer ? propsBuf : propsBuf.buffer); } catch (e) {}
-                    try { if (coordsBuf) this._abPool.release(coordsBuf instanceof ArrayBuffer ? coordsBuf : coordsBuf.buffer); } catch (e) {}
+                    try { if (propsBuf) this._abPool.release(propsBuf instanceof ArrayBuffer ? propsBuf : propsBuf.buffer); } catch (e) { }
+                    try { if (coordsBuf) this._abPool.release(coordsBuf instanceof ArrayBuffer ? coordsBuf : coordsBuf.buffer); } catch (e) { }
                     // if we requested a full payload previously, acknowledge the worker so it can commit cache
-                    try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
+                    try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) { }
                 } catch (err) {
                     console.warn('Failed to decode binary worker response', err);
                 }
@@ -44,15 +44,15 @@ export default class ProperLabels {
                         try {
                             this.gjsource.updateData(diff);
                             // successfully applied diff: acknowledge so worker can commit
-                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
+                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) { }
                         } catch (e) {
                             // updateData failed: request full payload from worker (do not ack yet)
-                            try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) {}
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) { }
                             return;
                         }
                     } else {
                         // no updateData support: request a full rebuild from worker (do not ack)
-                        try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) {}
+                        try { this.minion.postMessage({ type: 'request_full' }); } catch (ee) { }
                         return;
                     }
                 } catch (err) {
@@ -70,11 +70,11 @@ export default class ProperLabels {
                             const addPropsBuf = msg.add.propsBuf !== undefined ? msg.add.propsBuf : null;
                             const addCoordsBuf = msg.add.coords;
                             addFeatures = decodeFeaturesBinary(msg.add.meta || [], addPropsBuf, addCoordsBuf, msg.add.keys || []);
-                            try { if (addPropsBuf) this._abPool.release(addPropsBuf instanceof ArrayBuffer ? addPropsBuf : addPropsBuf.buffer); } catch (e) {}
-                            try { if (addCoordsBuf) this._abPool.release(addCoordsBuf instanceof ArrayBuffer ? addCoordsBuf : addCoordsBuf.buffer); } catch (e) {}
+                            try { if (addPropsBuf) this._abPool.release(addPropsBuf instanceof ArrayBuffer ? addPropsBuf : addPropsBuf.buffer); } catch (e) { }
+                            try { if (addCoordsBuf) this._abPool.release(addCoordsBuf instanceof ArrayBuffer ? addCoordsBuf : addCoordsBuf.buffer); } catch (e) { }
                         } catch (err) {
                             console.warn('Failed to decode add-list from worker', err);
-                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) { }
                             return;
                         }
                     }
@@ -85,11 +85,11 @@ export default class ProperLabels {
                             const updPropsBuf = msg.update.propsBuf !== undefined ? msg.update.propsBuf : null;
                             const updCoordsBuf = msg.update.coords;
                             updateFeatures = decodeFeaturesBinary(msg.update.meta || [], updPropsBuf, updCoordsBuf, msg.update.keys || []);
-                            try { if (updPropsBuf) this._abPool.release(updPropsBuf instanceof ArrayBuffer ? updPropsBuf : updPropsBuf.buffer); } catch (e) {}
-                            try { if (updCoordsBuf) this._abPool.release(updCoordsBuf instanceof ArrayBuffer ? updCoordsBuf : updCoordsBuf.buffer); } catch (e) {}
+                            try { if (updPropsBuf) this._abPool.release(updPropsBuf instanceof ArrayBuffer ? updPropsBuf : updPropsBuf.buffer); } catch (e) { }
+                            try { if (updCoordsBuf) this._abPool.release(updCoordsBuf instanceof ArrayBuffer ? updCoordsBuf : updCoordsBuf.buffer); } catch (e) { }
                         } catch (err) {
                             console.warn('Failed to decode update-list from worker', err);
-                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) { }
                             return;
                         }
                     }
@@ -130,7 +130,7 @@ export default class ProperLabels {
                                 updateDiffsRaw.push(d);
                             }
                             // release props buffer back to pool
-                            try { if (upPropsBuf) this._abPool.release(upPropsBuf instanceof ArrayBuffer ? upPropsBuf : upPropsBuf.buffer); } catch (e) {}
+                            try { if (upPropsBuf) this._abPool.release(upPropsBuf instanceof ArrayBuffer ? upPropsBuf : upPropsBuf.buffer); } catch (e) { }
                         } catch (err) {
                             console.warn('Failed to decode compacted update diffs', err);
                         }
@@ -154,13 +154,13 @@ export default class ProperLabels {
                     if (this.gjsource && typeof this.gjsource.updateData === 'function') {
                         try {
                             this.gjsource.updateData(diffObj);
-                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) {}
+                            try { this.minion.postMessage({ type: 'diff_ack' }); } catch (e) { }
                         } catch (err) {
-                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                            try { this.minion.postMessage({ type: 'request_full' }); } catch (e) { }
                             return;
                         }
                     } else {
-                        try { this.minion.postMessage({ type: 'request_full' }); } catch (e) {}
+                        try { this.minion.postMessage({ type: 'request_full' }); } catch (e) { }
                         return;
                     }
                 } catch (err) {
@@ -223,7 +223,7 @@ export default class ProperLabels {
                     this._postTimer = setTimeout(() => {
                         try {
                             if (this._pendingPost) {
-                                    try {
+                                try {
                                     // encode geometries into a compact Float32Array + key-indexed properties buffer (use pool)
                                     const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(this._pendingPost.features || [], { pool: this._abPool });
                                     // send binary message with transferred properties + coordinates buffers (include cacheSize and promoteId)
@@ -264,39 +264,38 @@ export default class ProperLabels {
             console.warn(`Malformed URL: ${request.url}`);
             return { data: null };
         }
-        const
-            payload = await fetch(url);
-            debugger;
-        if (!payload.ok) {
-            console.warn(`Failed to fetch tile: ${payload.statusText}`);
-            return { data: null };
-        }
-        const
-            l = s.length,
-            [z, x, y] = s.slice(l - 4, l - 1).map(k => k * 1),
-            data = await payload.arrayBuffer(),
-            vectortile = new VectorTile(new Protobuf(data)),
-            tile = {
-                layers: Object.entries(vectortile.layers).reduce((acc, [layerId, layer]) => ({
-                    ...acc,
-                    [layerId]: {
-                        ...layer,
-                        feature: (index) => {
-                            const feature = layer.feature(index);
-                            const coordinates = feature.loadGeometry();
-                            const isOuter = coordinates.flat(Infinity).some(c =>
-                                c.x >= layer.extent - eps || c.y >= layer.extent - eps ||
-                                c.x <= eps || c.y <= eps
-                            );
-                            feature.properties['clipped'] = isOuter;
-                            return feature;
+        
+        const payload = await fetch(url);
+        let pbf;
+        if (payload.status === 200) {
+            const
+                l = s.length,
+                [z, x, y] = s.slice(l - 4, l - 1).map(k => k * 1),
+                data = await payload.arrayBuffer(),
+                vectortile = new VectorTile(new Protobuf(data)),
+                tile = {
+                    layers: Object.entries(vectortile.layers).reduce((acc, [layerId, layer]) => ({
+                        ...acc,
+                        [layerId]: {
+                            ...layer,
+                            feature: (index) => {
+                                const feature = layer.feature(index);
+                                const coordinates = feature.loadGeometry();
+                                const isOuter = coordinates.flat(Infinity).some(c =>
+                                    c.x >= layer.extent - eps || c.y >= layer.extent - eps ||
+                                    c.x <= eps || c.y <= eps
+                                );
+                                feature.properties['clipped'] = isOuter;
+                                return feature;
+                            }
                         }
-                    }
-                }), {})
-            },
-            pbf = tileToProtobuf(tile).buffer,
-            response = { data: pbf };
-        return response;
+                    }), {})
+                };
+            pbf = tileToProtobuf(tile).buffer;
+        } else {
+            pbf = tileToProtobuf({}).buffer;
+        }
+        return { data: pbf };
     }
 }
 
