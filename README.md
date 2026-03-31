@@ -1,25 +1,25 @@
 # maplibre-proper-labels
 
-Tiny `Maplibre GL JS` plugin for proper labelling of geometries bigger than the layer tile size.
+[![npm version](https://img.shields.io/npm/v/maplibre-properlabels.svg)](https://www.npm.com/package/maplibre-properlabels) [![jsDelivr](https://img.shields.io/jsdelivr/npm/v/maplibre-properlabels.svg)](https://www.jsdelivr.com/package/npm/maplibre-properlabels)
 
-<img width="1378" height="1027" alt="image" src="https://github.com/user-attachments/assets/7fa03b8f-af3a-4664-9889-a6dfd7dd98e2" />
+`Maplibre GL JS` plugin for proper labelling of polygons that extend across tiles.
+
+![img](readme.jpg)
+
 (red labels are the "proper" ones 😅)
 
 ## Live example at
 
 https://abelvm.github.io/maplibre-properlabels/example/
 
-* **Black labels:** raw labelling the `fill` layer
-* **Red labels:** the proper ones!
 
 ## Why
 
-Any tiled-sourced vector layer in MapLibre lacks proper labelling, as
+Any tiled-sourced vector layer in MapLibre lacks proper labelling, as every geometry that extends through several tiles has several labels, one per geometry portion.
 
-* Every geometry that extends through several tiles has several labels
-* Even the tiniest Polygon gets a label, regardless of whether it is a feature itself or part of a multigeometry
+This just grin my gears
 
-So, this plugin tries to fix those issues while providing dynamic placement, so every feature within the viewport always has a label in sight.
+![img](grin.jpg)
 
 This is inspired by https://github.com/maplibre/maplibre-tile-spec/issues/710 and my stubbornness
 
@@ -31,11 +31,47 @@ Just grab the files in the `dist` folder, or run `npm run build` to regenerate t
 
 ### Install
 
-Use it as a module in your HTML
+Install from npm (recommended):
 
-`<script type='module' src='../dist/maplibre-properlabels.js'></script>`
+```bash
+npm install maplibre-properlabels
+```
 
-or with an import elsewhere
+Then import in your project:
+
+```javascript
+import ProperLabels from 'maplibre-properlabels';
+// or, if using CommonJS:
+// const ProperLabels = require('maplibre-properlabels').default;
+```
+
+Use via CDN (jsDelivr / unpkg):
+
+```html
+<!-- jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/maplibre-properlabels@1.0.0/dist/maplibre-properlabels.js"></script>
+<!-- or unpkg -->
+<script src="https://unpkg.com/maplibre-properlabels@1.0.0/dist/maplibre-properlabels.js"></script>
+```
+
+When using the CDN bundle the plugin registers itself on `maplibregl.VectorTileSource.prototype` and can be used like this:
+
+```javascript
+const mysource = map.getSource('demotiles');
+const proper = mysource.ProperLabels({
+        sourceLayer: 'countries'
+    });
+```
+
+or
+
+```javascript
+const proper = new ProperLabels({
+        map,
+        source: 'demotiles', 
+        sourceLayer: 'countries'
+    });
+```
 
 ### Use
 
@@ -81,23 +117,18 @@ map.on('load', () => {
 
 ## How does it work
 
-1. On map movements the plugin queries the vector-tile source for all features in the viewport using `map.querySourceFeatures(sourceId, { sourceLayer })`.
-2. Features are grouped by the promoted id (`fid`) so every logical feature (which may be split across tiles) is processed as a single group.
+I've spent several days trying to put a man in the middle of the lifecycle of the features bucket of MaplibreGL JS, to upstream this functionality, but regardless the approach... the rendered always picked the raw features instead of the processed ones, so, long story short, this is a plugin instead of a PR. And, as a plugin without access to internals, it's not as elegant as it could be. Meh.
+
+And how does it work?
+
+1. On new data loading the plugin queries the vector-tile source for all loaded features using `map.querySourceFeatures(sourceId, { sourceLayer })`.
+2. Features are grouped by the promoted id so every logical feature (which may be split across tiles) is processed as a single group.
 3. The main thread encodes the groups into a compact binary transferable (Float32 coordinate buffer + key-indexed properties buffer) and posts it to a worker. An `ArrayBufferPool` is used to reduce allocations.
 4. The worker decodes the binary payload, runs geometry processing (simplify, union/flatten/combine for multi-part groups, and a safe `polylabel` fallback), and computes a short raw-group signature and geometry hashes to detect unchanged items.
 5. The worker keeps a cache of processed features and emits incremental diffs (adds/updates/removes). Add/update feature lists are encoded as binary transferables and property diffs are compacted into a shared keys table + props buffer to minimize structured-clone cost.
 6. The main thread decodes the binary diffs, reconstructs a canonical `GeoJSONSourceDiff` and applies it with `source.updateData(diff)`. A short handshake (`diff_ack`) lets the worker commit pending changes to its cache only after the main thread successfully applied the diff.
 
 This design keeps the main thread lightweight by transferring buffers, applying incremental diffs, and avoiding expensive geometry work on the UI thread.
-## Example legend
-
-The live example includes a legend to help visual debugging:
-
-- Blue polygons: not clipped (normal features)
-- Green polygons: clipped (features that touch tile edges)
-- Black labels: MapLibre native labels (from the vector tiles)
-- Red labels: "proper" labels produced by this plugin (de-duplicated and placed)
-- Red lines: tile boundaries (when `map.showTileBoundaries = true`)
 
 ## Local development
 

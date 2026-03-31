@@ -14,6 +14,7 @@ export default class ProperLabels {
         this.tileSize = this.source.tileSize || 512;
         this.tolerance = options.tolerance || 0.00001; // ~ 1m on the Equator
         this.cacheSize = options.cacheSize || 10000;
+        this.seed = false;
 
         // worker (use transferable ArrayBuffer for messages)
         this.minion = new MinionWorker();
@@ -248,7 +249,7 @@ export default class ProperLabels {
                     tolerance: t
                 };
                 this._pendingPost = data;
-                if (this._postTimer == null) {
+                    if (this._postTimer == null) {
                     this._postTimer = setTimeout(() => {
                         try {
                             if (this._pendingPost) {
@@ -256,13 +257,16 @@ export default class ProperLabels {
                                 // avoid sending entire payloads when nothing changed.
                                 const featuresForSig = this._pendingPost.features || [];
                                 const newHashes = new Map();
+                                // always compute newHashes for the current features
+                                for (const f of featuresForSig) {
+                                    const idStr = String(f.id == null ? '' : f.id);
+                                    let gh = 0;
+                                    try { gh = computeGeometryHash(f.geometry); } catch (e) { gh = 0; }
+                                    newHashes.set(idStr, gh);
+                                }
                                 let allSame = true;
                                 if (this._lastGeomHashes && this._lastGeomHashes.size === featuresForSig.length) {
-                                    for (const f of featuresForSig) {
-                                        const idStr = String(f.id == null ? '' : f.id);
-                                        let gh = 0;
-                                        try { gh = computeGeometryHash(f.geometry); } catch (e) { gh = 0; }
-                                        newHashes.set(idStr, gh);
+                                    for (const [idStr, gh] of newHashes.entries()) {
                                         if (this._lastGeomHashes.get(idStr) !== gh) { allSame = false; break; }
                                     }
                                 } else {
@@ -276,7 +280,6 @@ export default class ProperLabels {
                                 try {
                                     // encode geometries into a compact Float32Array + key-indexed properties buffer (use pool)
                                     const { meta, keys, propsBuffer, coordsArray } = encodeFeaturesBinary(this._pendingPost.features || [], { pool: this._abPool, useSharedKeyTable: true });
-                                    // include per-feature geometry hashes to help worker avoid false negatives
                                     const hashObj = Object.fromEntries(newHashes);
                                     // send binary message with transferred properties + coordinates buffers (include cacheSize, promoteId, and hashes)
                                     this.minion.postMessage({ type: 'features_bin', meta, keys, propsBuf: propsBuffer.buffer, tolerance: this._pendingPost.tolerance, coords: coordsArray.buffer, cacheSize: this.cacheSize, promoteId: this.fid, hashes: hashObj }, [propsBuffer.buffer, coordsArray.buffer]);

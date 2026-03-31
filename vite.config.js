@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import { resolve } from 'path';
 
-const label='maplibre-properlabels';
+const label = 'maplibre-properlabels';
 
 export default defineConfig({
   base: './',
@@ -16,17 +16,16 @@ export default defineConfig({
         return `${label}.${format}.js`
       }
     },
-    // Enable terser minification and configure terser options at the build level
-    //minify: 'terser',
+    minify: 'terser',
     assetsInlineLimit: 0,
-    // terserOptions: {
-    //   compress: {
-    //     drop_console: true,
-    //     drop_debugger: true
-    //   },
-    //   format: {
-    //     comments: false
-    //   }
-    // }
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      },
+      format: {
+        comments: false
+      }
+    }
   }
 });

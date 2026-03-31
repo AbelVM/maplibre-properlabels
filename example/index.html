@@ -29,13 +29,13 @@
             top: 10px;
             left: 10px;
             background: rgba(255, 255, 255, 0.95);
-            padding: 8px;
+            padding: 16px;
             border-radius: 6px;
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
             font-size: 13px;
             color: #111;
             max-width: 360px;
-            box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
             pointer-events: none;
         }
 
@@ -93,20 +93,17 @@
         #info ul {
             list-style: none;
             padding: 0;
-            margin: 6px 0 0 0;
         }
 
         #info li {
             display: flex;
             align-items: center;
             gap: 8px;
-            margin: 6px 0;
             font-size: 13px;
             color: #111;
         }
 
         .swatch {
-            width: 18px;
             height: 12px;
             border-radius: 3px;
             display: inline-block;
@@ -125,7 +122,7 @@
 
         .label-sw {
             display: inline-block;
-            padding: 2px 6px;
+            padding: 2px 0px;
             border-radius: 3px;
             font-weight: 600;
             font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
@@ -144,11 +141,23 @@
         }
 
         .line-sw {
-            width: 22px;
             height: 2px;
             display: inline-block;
             background: #ff0000;
             border-radius: 2px;
+        }
+
+        #info li:not(:first-child) {
+            margin-top: 10px;
+        }
+
+        #info li>span {
+            width: 3rem;
+            text-align: center;
+        }
+
+        #info label {
+            pointer-events: all !important;
         }
     </style>
 </head>
@@ -163,14 +172,16 @@
     </a>
     <div id="map"></div>
     <div id="info" role="region" aria-label="Map legend">
-        <div class="legend-title">Legend</div>
+
         <ul>
-            <li><span class="swatch blue" aria-hidden="true"></span> Blue polygons: not clipped</li>
-            <li><span class="swatch green" aria-hidden="true"></span> Green polygons: clipped</li>
-            <li><span class="label-sw black" aria-hidden="true">Label</span> Black labels: MapLibre native labels for
-                polygons</li>
-            <li><span class="label-sw red" aria-hidden="true">Label</span> Red labels: the proper labels</li>
-            <li><span class="line-sw" aria-hidden="true"></span> Red lines: tile boundaries</li>
+            <li><span class="label-sw black" aria-hidden="true">Label</span> <label><input type="radio" name="label"
+                        id="black" value="black_checkbox" checked />MapLibre labels for polygons </label></li>
+            <li><span class="label-sw red" aria-hidden="true">Label</span> <label><input type="radio" name="label"
+                        id="red" value="red_checkbox" />The proper labels</label></li>
+            <li><span class="swatch blue" aria-hidden="true"></span> Not clipped countries</li>
+            <li><span class="swatch green" aria-hidden="true"></span> Clipped countries</li>
+            <li><span class="line-sw" aria-hidden="true"></span> <label><input type="checkbox" id="tiles"
+                        value="tiles_checkbox" />Tile boundaries</label></li>
         </ul>
     </div>
     <script>
@@ -223,8 +234,6 @@
             zoom: 5
         });
 
-        map.showTileBoundaries = true;
-
         window.map = map;
 
         map.on('load', () => {
@@ -241,7 +250,8 @@
                 layout: {
                     'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
                     'text-size': 12,
-                    "text-font": ["Montserrat"]
+                    "text-font": ["Montserrat"],
+                    'visibility': 'none'
                 },
                 paint: {
                     'text-color': '#ff0000',
@@ -250,6 +260,24 @@
                 }
             });
         });
+
+        const
+            redlabel = document.querySelector('#red'),
+            blacklabel = document.querySelector('#black'),
+            redline = document.querySelector('#tiles');
+
+        redlabel.addEventListener('change', e => {
+            map.setLayoutProperty('countries-labels-proper', 'visibility', e.target.checked ? 'visible' : 'none');
+            map.setLayoutProperty('countries-labels', 'visibility', e.target.checked ? 'none' : 'visible');
+        });
+        blacklabel.addEventListener('change', e => {
+            map.setLayoutProperty('countries-labels', 'visibility', e.target.checked ? 'visible' : 'none');
+            map.setLayoutProperty('countries-labels-proper', 'visibility', e.target.checked ? 'none' : 'visible');
+        });
+        redline.addEventListener('change', e => {
+            map.showTileBoundaries = e.target.checked;
+        });
+
     </script>
 </body>
 

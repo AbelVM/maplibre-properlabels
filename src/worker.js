@@ -172,7 +172,15 @@ function computeGroupRawHash(group) {
     return h;
 }
 
-onmessage = e => {
+const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
+
+// Test hooks: allow tests to set pending diff and read cache size.
+try {
+    _root.__test_setPendingDiff = (v) => { _pendingDiff = v; };
+    _root.__test_getCacheSize = () => (_cache && typeof _cache.size === 'number') ? _cache.size : 0;
+} catch (e) { }
+
+_root.onmessage = e => {
     // Accept either object messages, transferable JSON, or our binary geometry format
     let incoming = e && e.data;
 
