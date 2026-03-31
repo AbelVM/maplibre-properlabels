@@ -266,6 +266,7 @@ export default class ProperLabels {
         }
         const
             payload = await fetch(url);
+            debugger;
         if (!payload.ok) {
             console.warn(`Failed to fetch tile: ${payload.statusText}`);
             return { data: null };
