@@ -47,6 +47,7 @@
     "@turf/point-on-feature": "^7.3.4",
     "@turf/simplify": "^7.3.4",
     "@turf/union": "^7.3.4",
+    "buffer": "^6.0.3",
     "pbf": "^4.0.1",
     "polylabel": "^2.0.1",
     "vt-pbf": "^3.1.3"

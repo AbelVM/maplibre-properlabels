@@ -17,6 +17,7 @@ describe('worker features (JSON) handling', () => {
 
     expect(globalThis.postMessage).toHaveBeenCalled();
     const first = globalThis.postMessage.mock.calls[0][0];
-    expect(first && (first.type === 'geojson_bin' || first.type === 'geojson')).toBe(true);
+    // worker may reply with a binary diff message or a full geojson response
+    expect(first && (first.type === 'geojson_bin' || first.type === 'geojson' || first.type === 'geojson_diff_bin')).toBe(true);
   });
 });

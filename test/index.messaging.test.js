@@ -43,7 +43,7 @@ describe('ProperLabels messaging', () => {
     const propsBuf = new Uint8Array(0).buffer;
     minion.onmessage({ data: { type: 'geojson_bin', meta: [], keys: [], propsBuf, coords } });
 
-    expect(gjsource.setData).toHaveBeenCalled();
+    expect(gjsource.updateData).toHaveBeenCalled();
     expect(minion.postMessage).toHaveBeenCalledWith({ type: 'diff_ack' });
   });
 

@@ -98,11 +98,12 @@ describe('ProperLabels sourcedata posting', () => {
     const callsAfterFirst = minion.postMessage.mock.calls.length;
     expect(callsAfterFirst).toBeGreaterThan(0);
 
-    // clear and call again with identical features -> should not post
+    // clear and call again with identical features -> worker no longer
+    // performs geometry-change short-circuiting, so it should post again.
     minion.postMessage.mockClear();
     mapStub._sourcedataCb({ sourceId: 'ps2', isSourceLoaded: true, tile: { tileID: { canonical: { z: 12 } } } });
     await new Promise(r => setTimeout(r, 30));
-    expect(minion.postMessage).not.toHaveBeenCalled();
+    expect(minion.postMessage).toHaveBeenCalled();
   });
 
   it('falls back to object payload when encode/JSON stringify fail', async () => {

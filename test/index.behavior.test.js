@@ -62,7 +62,7 @@ describe('ProperLabels integration', () => {
     const obj = { type: 'FeatureCollection', features: [{ type: 'Feature', id: 1, geometry: { type: 'Point', coordinates: [1, 2] }, properties: {} }] };
     const enc = new TextEncoder().encode(JSON.stringify(obj));
     minion.onmessage({ data: { type: 'geojson', payload: enc.buffer } });
-    expect(gjsource.setData).toHaveBeenCalled();
+    expect(gjsource.updateData).toHaveBeenCalled();
   });
 
   it('handles geojson_diff: updateData success and failure', async () => {
