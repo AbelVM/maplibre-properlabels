@@ -4,7 +4,6 @@ import { flatten } from "@turf/flatten";
 import polylabel from 'polylabel';
 import { pointOnFeature } from "@turf/point-on-feature";
 import { simplify } from "@turf/simplify";
-import { area } from "@turf/area";
 import { encodeFeaturesBinary, decodeFeaturesBinary, ArrayBufferPool, textEncoder, textDecoder } from './utils.js';
 
 const _abPool = new ArrayBufferPool();
@@ -31,6 +30,7 @@ const safePolylabel = (feature, precision) => {
         return pointOnFeature(feature).geometry;
     }
 }
+
 
 const shoeLace = points => {
     if (!points) return 0;
@@ -316,7 +316,6 @@ _root.onmessage = e => {
     const data = incoming || {};
     const features = data.features || [];
     const tolerance = data.tolerance || 0.00001;
-    const units = data.unit || 'meters';
     const mutate = true;
 
     // group features by id (preserve original id types using a Map)
@@ -381,6 +380,8 @@ _root.onmessage = e => {
                 }
             }
         }
+
+
         collection.features = collection.features.map((f, i) => {
             const idx = `${id}-${i}`;
             const origGeom = f.geometry;
@@ -395,10 +396,9 @@ _root.onmessage = e => {
             f.id = idx;
             return f;
         });
-        const biggest = Math.max(...collection.features.map(f => f.properties && f.properties._area || 0));
-        const diff = {
-            remove: collection.features.map(f => f._index),
-            add: collection.features.map(f => {
+        const finalCollection = {
+            type: 'FeatureCollection',
+            features: collection.features.map(f => {
                 if (f.properties && f.properties._area != null && f.properties._area > 0) {
                     f.properties._localSortKey = biggest / f.properties._area;
                     f.properties._globalSortKey = 1 / f.properties._area;
@@ -406,25 +406,14 @@ _root.onmessage = e => {
                     f.properties._localSortKey = 1e+9999;
                     f.properties._globalSortKey = 1e+9999;
                 }
-                return f;
+                return f; 
             })
-        };
+        }
 
-        /*         const finalCollection = {
-                    type: 'FeatureCollection',
-                    features: collection.features.map(f => {
-                        if (f.properties && f.properties._area != null && f.properties._area > 0) {
-                            f.properties._localSortKey = biggest / f.properties._area;
-                            f.properties._globalSortKey = 1 / f.properties._area;
-                        } else {
-                            f.properties._localSortKey = 1e+9999;
-                            f.properties._globalSortKey = 1e+9999;
-                        }
-                        return f; 
-                    })
-                }; */
+
 
         collection = combine(collection);
+
         const feature = { type: 'Feature', id: id, geometry: collection.features[0].geometry, properties: props }
 
         const geomHashNew = computeGeometryHash(feature.geometry);

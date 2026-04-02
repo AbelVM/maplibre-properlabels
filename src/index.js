@@ -14,7 +14,9 @@ export default class ProperLabels {
         this.tileSize = this.source.tileSize || 512;
         this.tolerance = options.tolerance || 0.00001; // ~ 1m on the Equator
         this.cacheSize = options.cacheSize || 10000;
+        this.units = options.units || 'meters';
         this.seed = false;
+
 
         // worker (use transferable ArrayBuffer for messages)
         this.minion = new MinionWorker();
@@ -246,7 +248,8 @@ export default class ProperLabels {
                     t = this.tolerance * Math.pow(10, -0.301 * z + 5.19); // https://wiki.openstreetmap.org/wiki/Zoom_levels
                 const data = {
                     features: rawFeatures.map(f => ({ id: f.id, geometry: f.geometry, properties: f.properties })),
-                    tolerance: t
+                    tolerance: t,
+                    unit: this.units
                 };
                 this._pendingPost = data;
                 if (this._postTimer == null) {
