@@ -2,7 +2,6 @@ import { union } from "@turf/union";
 import { flatten } from "@turf/flatten";
 import polylabel from 'polylabel';
 import { pointOnFeature } from "@turf/point-on-feature";
-import { simplify } from "@turf/simplify";
 import { area } from "@turf/area";
 import { o2b, b2o } from "./utils.js";
 

@@ -57,13 +57,11 @@ export default class ProperLabels {
         };
 
         const labelsBucket = new Map();
-        tilePool.onmessage = e => {
+        gatherPool.onmessage = e => {
             if (e.data instanceof ArrayBuffer) {
                 const buffer = e.data;
                 const incoming = b2o(buffer);
-                if (incoming.type !== 'simplified') return 0;
-                const {unique, type, ...payload} = incoming;
-                piecesBucket.set(unique, payload);
+                
             }
         };
 
