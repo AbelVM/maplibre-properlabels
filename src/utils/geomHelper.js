@@ -205,3 +205,74 @@ export function countGeoJSONPoints(obj, opts = {}) {
   walk(obj);
   return unique ? seen.size : count;
 }
+
+/**
+ * Group polygon features whose outer rings share at least one vertex.
+ * @param {GeoJSON.FeatureCollection} fc
+ * @param {Object} [opts]
+ * @param {number|null} [opts.decimalPlaces=null] - if set, quantize coords with toFixed(decimalPlaces)
+ * @param {boolean} [opts.returnIndices=false] - return feature indices instead of feature objects
+ * @returns {Array<Array<GeoJSON.Feature>|Array<number>>} groups
+ */
+export function groupPolygonsBySharedVertex(fc, { decimalPlaces = null, returnIndices = false } = {}) {
+  const features = (fc && fc.features) || [];
+  const polyFeatIdx = [];
+  for (let i = 0; i < features.length; i++) {
+    const g = features[i] && features[i].geometry;
+    if (!g) continue;
+    if (g.type === 'Polygon' || g.type === 'MultiPolygon') polyFeatIdx.push(i);
+  }
+  const n = polyFeatIdx.length;
+  if (!n) return [];
+
+  const parent = new Array(n);
+  const rank = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  function find(x) {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+    return x;
+  }
+  function union(a, b) {
+    let ra = find(a), rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[rb] < rank[ra]) parent[rb] = ra;
+    else { parent[rb] = ra; rank[ra]++; }
+  }
+
+  const coordMap = new Map();
+  const keyFor = (pt) => {
+    const x = pt[0], y = pt[1];
+    return decimalPlaces != null ? `${x.toFixed(decimalPlaces)}|${y.toFixed(decimalPlaces)}` : `${x}|${y}`;
+  };
+
+  for (let di = 0; di < n; di++) {
+    const fi = polyFeatIdx[di];
+    const geom = features[fi].geometry;
+    const seen = new Set();
+
+    const processRing = (ring) => {
+      for (let p of ring || []) {
+        const k = keyFor(p);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (coordMap.has(k)) union(di, coordMap.get(k));
+        else coordMap.set(k, di);
+      }
+    };
+
+    if (geom.type === 'Polygon') {
+      processRing(geom.coordinates && geom.coordinates[0]);
+    } else { // MultiPolygon
+      for (const poly of geom.coordinates || []) processRing(poly && poly[0]);
+    }
+  }
+
+  const groupsMap = new Map();
+  for (let di = 0; di < n; di++) {
+    const root = find(di);
+    if (!groupsMap.has(root)) groupsMap.set(root, []);
+    groupsMap.get(root).push(returnIndices ? polyFeatIdx[di] : features[polyFeatIdx[di]]);
+  }
+  return Array.from(groupsMap.values());
+}

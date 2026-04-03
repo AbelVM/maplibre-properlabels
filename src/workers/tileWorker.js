@@ -1,7 +1,7 @@
 import { simplify } from "@turf/simplify";
 import { flatten } from "@turf/flatten";
 import { o2b, b2o } from "../utils/bufferManager.js";
-import { strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
+import { groupPolygonsBySharedVertex, strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
 
 const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
 
@@ -35,6 +35,10 @@ _root.onmessage = e => {
         const clipped = fc.features.filter(f => f.properties.clipped);
         const clipped_clipped = [];
         const clipped_unclipped = [];
+
+        const groups = groupPolygonsBySharedVertex(clipped);
+        debugger;
+
         clipped.forEach(f => {
             if (strictOuterCheck(f.geometry.coordinates, unique, tileSize)) {
                 clipped_clipped.push(f);
