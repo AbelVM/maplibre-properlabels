@@ -40,18 +40,15 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@mapbox/vector-tile": "^2.0.4",
     "@turf/area": "^7.3.4",
     "@turf/combine": "^7.3.4",
     "@turf/flatten": "^7.3.4",
     "@turf/simplify": "^7.3.4",
     "@turf/union": "^7.3.4",
-    "pbf": "^4.0.1",
     "polylabel": "^2.0.1"
   },
   "peerDependencies": {
-    "maplibre-gl": ">=5.0.0",
-    "@maplibre/vt-pbf": ">=4.3.0"
+    "maplibre-gl": ">=5.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",

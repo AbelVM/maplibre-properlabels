@@ -5,44 +5,11 @@ import { area } from "@turf/area";
  * Utilities for working with GeoJSON polygon geometries used by the worker.
  *
  * Functions:
- * - `lazyOuterCheck(acc, [layerId, layer])` — wraps layer.feature to mark clipped features lazily.
  * - `strictOuterCheck(coordinates, tile, tileSize)` — strict check using Web-Mercator math.
  * - `safePolylabel(feature, precision)` — robust polylabel with turf fallback.
  * - `polygonArea(feature, units)` — area calculation (meters via turf or planar via shoelace).
  */
 
-/**
- * Lazily check whether features touch the tile edge and mark them as clipped.
- *
- * This returns a new accumulator object with the same keys as `acc` but where
- * each `layer.feature(index)` call will mark `feature.properties.clipped = true`
- * when any vertex is within `eps` of the layer extent edges. The check is
- * intentionally cheap (pixel-coordinate based) and intended for a quick
- * heuristic rather than an exact geometric test.
- *
- * @param {Object} acc - Accumulator / layer map being built.
- * @param {Array} entry - Tuple of [layerId, layer]. `layer` must expose `feature(index)` and `extent`.
- * @returns {Object} New accumulator with wrapped layer that sets `feature.properties.clipped`.
- */
-export const lazyOuterCheck = (acc, [layerId, layer]) => {
-    const eps = 1;
-    return {
-        ...acc,
-        [layerId]: {
-            ...layer,
-            feature: (index) => {
-                const feature = layer.feature(index);
-                const coordinates = feature.loadGeometry();
-                const isOuter = coordinates.flat(Infinity).some(c =>
-                    c.x >= layer.extent - eps || c.y >= layer.extent - eps ||
-                    c.x <= eps || c.y <= eps
-                );
-                feature.properties['clipped'] = isOuter;
-                return feature;
-            }
-        }
-    };
-};
 
 /**
  * Strictly determine whether a polygon's first ring has points outside the given tile.
@@ -55,18 +22,23 @@ export const lazyOuterCheck = (acc, [layerId, layer]) => {
  * to Web-Mercator limits. `tile` should be a string of the form `"z|x|y"`.
  *
  * @param {Array<Array<number[]>>} coordinates - Polygon coordinates (array of rings, ring is array of [lon, lat]).
- * @param {string} tile - Tile identifier in the form `"z|x|y"`.
+ * @param {string|Array<number>} tile - Tile identifier in the form `"z|x|y"` or an array `[z, x, y]`.
  * @param {number} tileSize - Tile pixel size (e.g. 256 or 512).
  * @returns {boolean} True when the polygon appears to touch or cross the tile boundary.
  */
 export const strictOuterCheck = (coordinates, tile, tileSize) => {
-    const [z, x, y] = tile.split('|');
+    const [z, x, y] = tile.split('|').map(Number);
     const scale = Math.pow(2, z) * tileSize;
     const MAX_LAT = 85.05112878;
     const eps = 1;
+
+    if (!coordinates[0]?.some) {
+        debugger;
+    }
+
     const isOuter = coordinates[0].some(p => {
-        p[1] = Math.max(Math.min(p[1], MAX_LAT), -MAX_LAT);
-        const sinLat = Math.sin(p[1] * Math.PI / 180);
+        const lat = Math.max(Math.min(p[1], MAX_LAT), -MAX_LAT);
+        const sinLat = Math.sin(lat * Math.PI / 180);
         const mx = ((p[0] + 180) / 360);
         const my = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI));
         const worldX = mx * scale;
@@ -75,12 +47,8 @@ export const strictOuterCheck = (coordinates, tile, tileSize) => {
         const tY = Math.floor(worldY / tileSize);
         const pX = Math.floor(worldX - tX * tileSize);
         const pY = Math.floor(worldY - tY * tileSize);
-        //return tY != y || tX != x;// || 
-        return pX <= eps || pY <= eps || pX >= tileSize - eps || pY >= tileSize - eps;
+        return tY != y || tX != x || pX <= eps || pY <= eps || pX >= tileSize - eps || pY >= tileSize - eps;
     });
-    if (!isOuter ) {
-        console.log('not outer');
-    }
     return isOuter;
 }
 
@@ -97,8 +65,8 @@ export const strictOuterCheck = (coordinates, tile, tileSize) => {
  */
 export const safePolylabel = (feature, precision) => {
     try {
-        if (feature.geometry.type!=='Polygon') {
-            throw new Error('Non-Polygon geometry'); 
+        if (feature.geometry.type !== 'Polygon') {
+            throw new Error('Non-Polygon geometry');
         }
         const coords = feature && feature.geometry && feature.geometry.coordinates;
         let pt = polylabel(coords, precision);
@@ -170,109 +138,38 @@ export const polygonArea = (feature, units) => {
  * @returns {number}
  */
 export function countGeoJSONPoints(obj, opts = {}) {
-  const { unique = false } = opts;
-  const seen = unique ? new Set() : null;
-  let count = 0;
+    const { unique = false } = opts;
+    const seen = unique ? new Set() : null;
+    let count = 0;
 
-  const isCoord = a => Array.isArray(a) && a.length >= 2 && typeof a[0] === 'number' && typeof a[1] === 'number';
-  const add = coord => {
-    if (unique) {
-      seen.add(coord.slice(0, 3).join(',')); // include up to 3 values (x,y,z) if present
-    } else {
-      count++;
-    }
-  };
-
-  function traverseCoords(coords) {
-    if (isCoord(coords)) { add(coords); return; }
-    if (Array.isArray(coords)) for (const c of coords) traverseCoords(c);
-  }
-
-  function walk(g) {
-    if (!g) return;
-    if (g.type === 'FeatureCollection') {
-      for (const f of g.features || []) walk(f);
-      return;
-    }
-    if (g.type === 'Feature') { walk(g.geometry); return; }
-    if (g.type === 'GeometryCollection') {
-      for (const geom of g.geometries || []) walk(geom);
-      return;
-    }
-    if (g.coordinates !== undefined) traverseCoords(g.coordinates);
-  }
-
-  walk(obj);
-  return unique ? seen.size : count;
-}
-
-/**
- * Group polygon features whose outer rings share at least one vertex.
- * @param {GeoJSON.FeatureCollection} fc
- * @param {Object} [opts]
- * @param {number|null} [opts.decimalPlaces=null] - if set, quantize coords with toFixed(decimalPlaces)
- * @param {boolean} [opts.returnIndices=false] - return feature indices instead of feature objects
- * @returns {Array<Array<GeoJSON.Feature>|Array<number>>} groups
- */
-export function groupPolygonsBySharedVertex(fc, { decimalPlaces = null, returnIndices = false } = {}) {
-  const features = (fc && fc.features) || [];
-  const polyFeatIdx = [];
-  for (let i = 0; i < features.length; i++) {
-    const g = features[i] && features[i].geometry;
-    if (!g) continue;
-    if (g.type === 'Polygon' || g.type === 'MultiPolygon') polyFeatIdx.push(i);
-  }
-  const n = polyFeatIdx.length;
-  if (!n) return [];
-
-  const parent = new Array(n);
-  const rank = new Array(n).fill(0);
-  for (let i = 0; i < n; i++) parent[i] = i;
-  function find(x) {
-    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-    return x;
-  }
-  function union(a, b) {
-    let ra = find(a), rb = find(b);
-    if (ra === rb) return;
-    if (rank[ra] < rank[rb]) parent[ra] = rb;
-    else if (rank[rb] < rank[ra]) parent[rb] = ra;
-    else { parent[rb] = ra; rank[ra]++; }
-  }
-
-  const coordMap = new Map();
-  const keyFor = (pt) => {
-    const x = pt[0], y = pt[1];
-    return decimalPlaces != null ? `${x.toFixed(decimalPlaces)}|${y.toFixed(decimalPlaces)}` : `${x}|${y}`;
-  };
-
-  for (let di = 0; di < n; di++) {
-    const fi = polyFeatIdx[di];
-    const geom = features[fi].geometry;
-    const seen = new Set();
-
-    const processRing = (ring) => {
-      for (let p of ring || []) {
-        const k = keyFor(p);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        if (coordMap.has(k)) union(di, coordMap.get(k));
-        else coordMap.set(k, di);
-      }
+    const isCoord = a => Array.isArray(a) && a.length >= 2 && typeof a[0] === 'number' && typeof a[1] === 'number';
+    const add = coord => {
+        if (unique) {
+            seen.add(coord.slice(0, 3).join(',')); // include up to 3 values (x,y,z) if present
+        } else {
+            count++;
+        }
     };
 
-    if (geom.type === 'Polygon') {
-      processRing(geom.coordinates && geom.coordinates[0]);
-    } else { // MultiPolygon
-      for (const poly of geom.coordinates || []) processRing(poly && poly[0]);
+    function traverseCoords(coords) {
+        if (isCoord(coords)) { add(coords); return; }
+        if (Array.isArray(coords)) for (const c of coords) traverseCoords(c);
     }
-  }
 
-  const groupsMap = new Map();
-  for (let di = 0; di < n; di++) {
-    const root = find(di);
-    if (!groupsMap.has(root)) groupsMap.set(root, []);
-    groupsMap.get(root).push(returnIndices ? polyFeatIdx[di] : features[polyFeatIdx[di]]);
-  }
-  return Array.from(groupsMap.values());
+    function walk(g) {
+        if (!g) return;
+        if (g.type === 'FeatureCollection') {
+            for (const f of g.features || []) walk(f);
+            return;
+        }
+        if (g.type === 'Feature') { walk(g.geometry); return; }
+        if (g.type === 'GeometryCollection') {
+            for (const geom of g.geometries || []) walk(geom);
+            return;
+        }
+        if (g.coordinates !== undefined) traverseCoords(g.coordinates);
+    }
+
+    walk(obj);
+    return unique ? seen.size : count;
 }

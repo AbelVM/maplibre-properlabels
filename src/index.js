@@ -1,12 +1,9 @@
-import Protobuf from 'pbf';
-import { VectorTile } from '@mapbox/vector-tile';
-import { fromVectorTileJs } from '@maplibre/vt-pbf';
 import TileWorker from './workers/tileWorker.js?worker&inline';
 import GatherWorker from './workers/gatherWorker.js?worker&inline';
 import PoolManager from './utils/poolManager.js';
 import CacheManager from './utils/cacheManager.js';
 import { o2b, b2o } from './utils/bufferManager.js';
-import { lazyOuterCheck } from './utils/geomHelper.js';
+
 
 export default class ProperLabels {
 
@@ -20,7 +17,7 @@ export default class ProperLabels {
         this.tolerance = options.tolerance || 0.00001; // ~ 1m on the Equator
         this.cacheSize = options.cacheSize || 5000;
         this.units = options.units || 'meters';
-        this.seed = false;  
+        this.seed = false;
         this.map.addSource(this.source.id + '-proper', {
             type: 'geojson',
             maxzoom: this.source.maxzoom,
@@ -28,15 +25,6 @@ export default class ProperLabels {
             data: {}
         });
         this.gjSource = this.map.getSource(this.source.id + '-proper');
-
-        maplibregl.addProtocol('proper', this._protocol);
-        this.map.setTransformRequest((url, resourceType) => {
-            const isTile = this.tiles.some(t => url.startsWith(t));
-            if (isTile && resourceType === 'Tile') {
-                return { url: 'proper://' + url };
-            }
-            return { url: url };
-        });
 
         const tilePool = new PoolManager(TileWorker, { size: 6 });
         const gatherPool = new PoolManager(GatherWorker, { size: 4 });
@@ -50,8 +38,9 @@ export default class ProperLabels {
             if (e.data instanceof ArrayBuffer) {
                 const buffer = e.data;
                 const incoming = b2o(buffer);
-                if (incoming.type === 'simplified') {
+                if (incoming.type === 'simplified' && incoming.size > 0) {
                     const { unique, type, ...payload } = incoming;
+                    //if (payload[68]) console.log(payload[68].features.map(f => f.properties._index));
                     piecesBucket.set(unique, payload);
                 }
             }
@@ -104,7 +93,7 @@ export default class ProperLabels {
                             features: tileFeatures.map((f, i) => ({
                                 id: f.properties[this.fid] || f.id,
                                 geometry: f.geometry,
-                                properties: { ...f.properties, _index: `${unique}|${i}`, _tile: unique }
+                                properties: { ...f.properties, _index: `${unique}|${i}`, _tile: unique, _group: f.properties[this.fid] }
                             }))
                         },
                         tolerance: t,
@@ -117,7 +106,12 @@ export default class ProperLabels {
                 if (e.isSourceLoaded) {
                     tilePool.addEventListener('idle', e => {
                         const pieces = Object.fromEntries(piecesBucket.entries());
-                        const payload = { pieces, tolerance: this.tolerance, unit: this.units };
+
+                        const a = Object.values(pieces).map(f => f[68]).filter(f => !!f);
+                        const c = { type: 'FeatureCollection', features: a.reduce((acc, cur) => [...acc, ...cur.features], []) };
+                        // console.log(c);
+
+                        const payload = { pieces, tolerance: this.tolerance, unit: this.units, tileSize: this.tileSize };
                         const buffer = o2b(payload);
                         gatherPool.postMessage(buffer);
                     });
@@ -126,32 +120,6 @@ export default class ProperLabels {
         });
         this.map.refreshTiles(this.source.id);
         return this.gjSource;
-    }
-
-    _protocol = async request => {
-        const
-            url = request.url.replace('proper://', ''),
-            s = request.url.split(/\/|\./i);
-        if (s === null || s.length < 4) {
-            console.warn(`Malformed URL: ${request.url}`);
-            return { data: null };
-        }
-        const payload = await fetch(url);
-        let pbf;
-        if (payload.status === 200) {
-            const
-                l = s.length,
-                [z, x, y] = s.slice(l - 4, l - 1).map(k => k * 1),
-                data = await payload.arrayBuffer(),
-                vectortile = new VectorTile(new Protobuf(data)),
-                tile = {
-                    layers: Object.entries(vectortile.layers).reduce(lazyOuterCheck, {})
-                };
-            pbf = fromVectorTileJs(tile).buffer;
-        } else {
-            pbf = fromVectorTileJs({}).buffer;
-        }
-        return { data: pbf };
     }
 }
 

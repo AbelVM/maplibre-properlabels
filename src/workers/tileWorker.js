@@ -1,7 +1,6 @@
-import { simplify } from "@turf/simplify";
 import { flatten } from "@turf/flatten";
 import { o2b, b2o } from "../utils/bufferManager.js";
-import { groupPolygonsBySharedVertex, strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
+import { strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
 
 const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
 
@@ -25,79 +24,22 @@ _root.onmessage = e => {
     const outputMap = new Map();
 
     groupedMap.forEach((group, id) => {
-        let fc = { type: 'FeatureCollection', features: group };
-        fc = flatten(fc);
-        fc.features.forEach((f, i) => {
-            f.properties._index = `${unique}|${id}|${i}`;
-            size += countGeoJSONPoints(f);
+        const fc_in = flatten({ type: 'FeatureCollection', features: group });
+        const fc_out = { type: 'FeatureCollection', features: [] };
+        fc_out.features = fc_in.features.filter(f => f.geometry.type === 'Polygon').map((f, i) => {
+            const index = `${unique}|${id}|${i}`;
+            const clipped = strictOuterCheck(f.geometry.coordinates, f.properties._tile, tileSize);
+            const props = Object.assign({}, f.properties, { _index: index, clipped });
+            const newF = { type: 'Feature', geometry: f.geometry, properties: props };
+            size += countGeoJSONPoints(newF);
+            return newF;
         });
-        const unclipped = fc.features.filter(f => !f.properties.clipped);
-        const clipped = fc.features.filter(f => f.properties.clipped);
-        const clipped_clipped = [];
-        const clipped_unclipped = [];
-
-        const groups = groupPolygonsBySharedVertex(clipped);
-        debugger;
-
-        clipped.forEach(f => {
-            if (strictOuterCheck(f.geometry.coordinates, unique, tileSize)) {
-                clipped_clipped.push(f);
-            } else {
-                f.properties.clipped = false;
-                clipped_unclipped.push(f);
-            }
-        });
-        fc.features = [...unclipped, ...clipped_unclipped, ...clipped_clipped];
-        outputMap.set(id, simplify(fc, { tolerance, mutate }));
+        outputMap.set(id, fc_out);
     });
 
 
-
-
-
-
-
-/*
-
-
-
-    const simplified = simplify(incoming.collection, { tolerance, mutate });
-
-    const groupedMap = new Map();
-    simplified.features.forEach(f => {
-        const k = f.id;
-        const arr = groupedMap.get(k) || [];
-        arr.push(f);
-        groupedMap.set(k, arr);
-    });
-
-    let size = 0;
-    groupedMap.forEach((group, id) => {
-        let fc = { type: 'FeatureCollection', features: group };
-        fc = flatten(fc);
-        fc.features.forEach((f, i) => {
-            f.properties._index = `${unique}|${id}|${i}`;
-            size += countGeoJSONPoints(f);
-        });
-        const unclipped = fc.features.filter(f => !f.properties.clipped);
-        const clipped = fc.features.filter(f => f.properties.clipped);
-        const clipped_clipped = [];
-        const clipped_unclipped = [];
-        clipped.forEach(f => {
-            if (strictOuterCheck(f.geometry.coordinates, unique, tileSize)) {
-                clipped_clipped.push(f);
-            } else {
-                f.properties.clipped = false;
-                clipped_unclipped.push(f);
-            }
-        });
-        fc.features = [...unclipped, ...clipped_unclipped, ...clipped_clipped];
-        groupedMap.set(id, fc);
-    });
-
-//*/
-
-    const payload = Object.assign({}, Object.fromEntries(outputMap), { unique, type: 'simplified', size });
+    const op = Object.fromEntries(outputMap);
+    const payload = Object.assign({}, op, { unique, type: 'simplified', size });
 
     _root.postMessage(o2b(payload));
 

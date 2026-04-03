@@ -1,248 +1,55 @@
-"use strict";var T=typeof document<"u"?document.currentScript:null;const A=65536*65536,M=1/A,J=12,F=typeof TextDecoder>"u"?null:new TextDecoder("utf-8"),k=0,S=1,E=2,_=5;class z{constructor(e=new Uint8Array(16)){this.buf=ArrayBuffer.isView(e)?e:new Uint8Array(e),this.dataView=new DataView(this.buf.buffer),this.pos=0,this.type=0,this.length=this.buf.length}readFields(e,n,r=this.length){for(;this.pos<r;){const i=this.readVarint(),s=i>>3,o=this.pos;this.type=i&7,e(s,n,this),this.pos===o&&this.skip(i)}return n}readMessage(e,n){return this.readFields(e,n,this.readVarint()+this.pos)}readFixed32(){const e=this.dataView.getUint32(this.pos,!0);return this.pos+=4,e}readSFixed32(){const e=this.dataView.getInt32(this.pos,!0);return this.pos+=4,e}readFixed64(){const e=this.dataView.getUint32(this.pos,!0)+this.dataView.getUint32(this.pos+4,!0)*A;return this.pos+=8,e}readSFixed64(){const e=this.dataView.getUint32(this.pos,!0)+this.dataView.getInt32(this.pos+4,!0)*A;return this.pos+=8,e}readFloat(){const e=this.dataView.getFloat32(this.pos,!0);return this.pos+=4,e}readDouble(){const e=this.dataView.getFloat64(this.pos,!0);return this.pos+=8,e}readVarint(e){const n=this.buf;let r,i;return i=n[this.pos++],r=i&127,i<128||(i=n[this.pos++],r|=(i&127)<<7,i<128)||(i=n[this.pos++],r|=(i&127)<<14,i<128)||(i=n[this.pos++],r|=(i&127)<<21,i<128)?r:(i=n[this.pos],r|=(i&15)<<28,H(r,e,this))}readVarint64(){return this.readVarint(!0)}readSVarint(){const e=this.readVarint();return e%2===1?(e+1)/-2:e/2}readBoolean(){return!!this.readVarint()}readString(){const e=this.readVarint()+this.pos,n=this.pos;return this.pos=e,e-n>=J&&F?F.decode(this.buf.subarray(n,e)):ae(this.buf,n,e)}readBytes(){const e=this.readVarint()+this.pos,n=this.buf.subarray(this.pos,e);return this.pos=e,n}readPackedVarint(e=[],n){const r=this.readPackedEnd();for(;this.pos<r;)e.push(this.readVarint(n));return e}readPackedSVarint(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readSVarint());return e}readPackedBoolean(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readBoolean());return e}readPackedFloat(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readFloat());return e}readPackedDouble(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readDouble());return e}readPackedFixed32(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readFixed32());return e}readPackedSFixed32(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readSFixed32());return e}readPackedFixed64(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readFixed64());return e}readPackedSFixed64(e=[]){const n=this.readPackedEnd();for(;this.pos<n;)e.push(this.readSFixed64());return e}readPackedEnd(){return this.type===E?this.readVarint()+this.pos:this.pos+1}skip(e){const n=e&7;if(n===k)for(;this.buf[this.pos++]>127;);else if(n===E)this.pos=this.readVarint()+this.pos;else if(n===_)this.pos+=4;else if(n===S)this.pos+=8;else throw new Error(`Unimplemented type: ${n}`)}writeTag(e,n){this.writeVarint(e<<3|n)}realloc(e){let n=this.length||16;for(;n<this.pos+e;)n*=2;if(n!==this.length){const r=new Uint8Array(n);r.set(this.buf),this.buf=r,this.dataView=new DataView(r.buffer),this.length=n}}finish(){return this.length=this.pos,this.pos=0,this.buf.subarray(0,this.length)}writeFixed32(e){this.realloc(4),this.dataView.setInt32(this.pos,e,!0),this.pos+=4}writeSFixed32(e){this.realloc(4),this.dataView.setInt32(this.pos,e,!0),this.pos+=4}writeFixed64(e){this.realloc(8),this.dataView.setInt32(this.pos,e&-1,!0),this.dataView.setInt32(this.pos+4,Math.floor(e*M),!0),this.pos+=8}writeSFixed64(e){this.realloc(8),this.dataView.setInt32(this.pos,e&-1,!0),this.dataView.setInt32(this.pos+4,Math.floor(e*M),!0),this.pos+=8}writeVarint(e){if(e=+e||0,e>268435455||e<0){Z(e,this);return}this.realloc(4),this.buf[this.pos++]=e&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=e>>>7&127)))}writeSVarint(e){this.writeVarint(e<0?-e*2-1:e*2)}writeBoolean(e){this.writeVarint(+e)}writeString(e){e=String(e),this.realloc(e.length*4),this.pos++;const n=this.pos;this.pos=ue(this.buf,e,this.pos);const r=this.pos-n;r>=128&&R(n,r,this),this.pos=n-1,this.writeVarint(r),this.pos+=r}writeFloat(e){this.realloc(4),this.dataView.setFloat32(this.pos,e,!0),this.pos+=4}writeDouble(e){this.realloc(8),this.dataView.setFloat64(this.pos,e,!0),this.pos+=8}writeBytes(e){const n=e.length;this.writeVarint(n),this.realloc(n);for(let r=0;r<n;r++)this.buf[this.pos++]=e[r]}writeRawMessage(e,n){this.pos++;const r=this.pos;e(n,this);const i=this.pos-r;i>=128&&R(r,i,this),this.pos=r-1,this.writeVarint(i),this.pos+=i}writeMessage(e,n,r){this.writeTag(e,E),this.writeRawMessage(n,r)}writePackedVarint(e,n){n.length&&this.writeMessage(e,Q,n)}writePackedSVarint(e,n){n.length&&this.writeMessage(e,ee,n)}writePackedBoolean(e,n){n.length&&this.writeMessage(e,re,n)}writePackedFloat(e,n){n.length&&this.writeMessage(e,ne,n)}writePackedDouble(e,n){n.length&&this.writeMessage(e,te,n)}writePackedFixed32(e,n){n.length&&this.writeMessage(e,ie,n)}writePackedSFixed32(e,n){n.length&&this.writeMessage(e,se,n)}writePackedFixed64(e,n){n.length&&this.writeMessage(e,oe,n)}writePackedSFixed64(e,n){n.length&&this.writeMessage(e,le,n)}writeBytesField(e,n){this.writeTag(e,E),this.writeBytes(n)}writeFixed32Field(e,n){this.writeTag(e,_),this.writeFixed32(n)}writeSFixed32Field(e,n){this.writeTag(e,_),this.writeSFixed32(n)}writeFixed64Field(e,n){this.writeTag(e,S),this.writeFixed64(n)}writeSFixed64Field(e,n){this.writeTag(e,S),this.writeSFixed64(n)}writeVarintField(e,n){this.writeTag(e,k),this.writeVarint(n)}writeSVarintField(e,n){this.writeTag(e,k),this.writeSVarint(n)}writeStringField(e,n){this.writeTag(e,E),this.writeString(n)}writeFloatField(e,n){this.writeTag(e,_),this.writeFloat(n)}writeDoubleField(e,n){this.writeTag(e,S),this.writeDouble(n)}writeBooleanField(e,n){this.writeVarintField(e,+n)}}function H(t,e,n){const r=n.buf;let i,s;if(s=r[n.pos++],i=(s&112)>>4,s<128||(s=r[n.pos++],i|=(s&127)<<3,s<128)||(s=r[n.pos++],i|=(s&127)<<10,s<128)||(s=r[n.pos++],i|=(s&127)<<17,s<128)||(s=r[n.pos++],i|=(s&127)<<24,s<128)||(s=r[n.pos++],i|=(s&1)<<31,s<128))return b(t,i,e);throw new Error("Expected varint not more than 10 bytes")}function b(t,e,n){return n?e*4294967296+(t>>>0):(e>>>0)*4294967296+(t>>>0)}function Z(t,e){let n,r;if(t>=0?(n=t%4294967296|0,r=t/4294967296|0):(n=~(-t%4294967296),r=~(-t/4294967296),n^4294967295?n=n+1|0:(n=0,r=r+1|0)),t>=18446744073709552e3||t<-18446744073709552e3)throw new Error("Given varint doesn't fit into 10 bytes");e.realloc(10),Y(n,r,e),X(r,e)}function Y(t,e,n){n.buf[n.pos++]=t&127|128,t>>>=7,n.buf[n.pos++]=t&127|128,t>>>=7,n.buf[n.pos++]=t&127|128,t>>>=7,n.buf[n.pos++]=t&127|128,t>>>=7,n.buf[n.pos]=t&127}function X(t,e){const n=(t&7)<<4;e.buf[e.pos++]|=n|((t>>>=3)?128:0),t&&(e.buf[e.pos++]=t&127|((t>>>=7)?128:0),t&&(e.buf[e.pos++]=t&127|((t>>>=7)?128:0),t&&(e.buf[e.pos++]=t&127|((t>>>=7)?128:0),t&&(e.buf[e.pos++]=t&127|((t>>>=7)?128:0),t&&(e.buf[e.pos++]=t&127)))))}function R(t,e,n){const r=e<=16383?1:e<=2097151?2:e<=268435455?3:Math.floor(Math.log(e)/(Math.LN2*7));n.realloc(r);for(let i=n.pos-1;i>=t;i--)n.buf[i+r]=n.buf[i]}function Q(t,e){for(let n=0;n<t.length;n++)e.writeVarint(t[n])}function ee(t,e){for(let n=0;n<t.length;n++)e.writeSVarint(t[n])}function ne(t,e){for(let n=0;n<t.length;n++)e.writeFloat(t[n])}function te(t,e){for(let n=0;n<t.length;n++)e.writeDouble(t[n])}function re(t,e){for(let n=0;n<t.length;n++)e.writeBoolean(t[n])}function ie(t,e){for(let n=0;n<t.length;n++)e.writeFixed32(t[n])}function se(t,e){for(let n=0;n<t.length;n++)e.writeSFixed32(t[n])}function oe(t,e){for(let n=0;n<t.length;n++)e.writeFixed64(t[n])}function le(t,e){for(let n=0;n<t.length;n++)e.writeSFixed64(t[n])}function ae(t,e,n){let r="",i=e;for(;i<n;){const s=t[i];let o=null,c=s>239?4:s>223?3:s>191?2:1;if(i+c>n)break;let h,u,l;c===1?s<128&&(o=s):c===2?(h=t[i+1],(h&192)===128&&(o=(s&31)<<6|h&63,o<=127&&(o=null))):c===3?(h=t[i+1],u=t[i+2],(h&192)===128&&(u&192)===128&&(o=(s&15)<<12|(h&63)<<6|u&63,(o<=2047||o>=55296&&o<=57343)&&(o=null))):c===4&&(h=t[i+1],u=t[i+2],l=t[i+3],(h&192)===128&&(u&192)===128&&(l&192)===128&&(o=(s&15)<<18|(h&63)<<12|(u&63)<<6|l&63,(o<=65535||o>=1114112)&&(o=null))),o===null?(o=65533,c=1):o>65535&&(o-=65536,r+=String.fromCharCode(o>>>10&1023|55296),o=56320|o&1023),r+=String.fromCharCode(o),i+=c}return r}function ue(t,e,n){for(let r=0,i,s;r<e.length;r++){if(i=e.charCodeAt(r),i>55295&&i<57344)if(s)if(i<56320){t[n++]=239,t[n++]=191,t[n++]=189,s=i;continue}else i=s-55296<<10|i-56320|65536,s=null;else{i>56319||r+1===e.length?(t[n++]=239,t[n++]=191,t[n++]=189):s=i;continue}else s&&(t[n++]=239,t[n++]=191,t[n++]=189,s=null);i<128?t[n++]=i:(i<2048?t[n++]=i>>6|192:(i<65536?t[n++]=i>>12|224:(t[n++]=i>>18|240,t[n++]=i>>12&63|128),t[n++]=i>>6&63|128),t[n++]=i&63|128)}return n}function w(t,e){this.x=t,this.y=e}w.prototype={clone(){return new w(this.x,this.y)},add(t){return this.clone()._add(t)},sub(t){return this.clone()._sub(t)},multByPoint(t){return this.clone()._multByPoint(t)},divByPoint(t){return this.clone()._divByPoint(t)},mult(t){return this.clone()._mult(t)},div(t){return this.clone()._div(t)},rotate(t){return this.clone()._rotate(t)},rotateAround(t,e){return this.clone()._rotateAround(t,e)},matMult(t){return this.clone()._matMult(t)},unit(){return this.clone()._unit()},perp(){return this.clone()._perp()},round(){return this.clone()._round()},mag(){return Math.sqrt(this.x*this.x+this.y*this.y)},equals(t){return this.x===t.x&&this.y===t.y},dist(t){return Math.sqrt(this.distSqr(t))},distSqr(t){const e=t.x-this.x,n=t.y-this.y;return e*e+n*n},angle(){return Math.atan2(this.y,this.x)},angleTo(t){return Math.atan2(this.y-t.y,this.x-t.x)},angleWith(t){return this.angleWithSep(t.x,t.y)},angleWithSep(t,e){return Math.atan2(this.x*e-this.y*t,this.x*t+this.y*e)},_matMult(t){const e=t[0]*this.x+t[1]*this.y,n=t[2]*this.x+t[3]*this.y;return this.x=e,this.y=n,this},_add(t){return this.x+=t.x,this.y+=t.y,this},_sub(t){return this.x-=t.x,this.y-=t.y,this},_mult(t){return this.x*=t,this.y*=t,this},_div(t){return this.x/=t,this.y/=t,this},_multByPoint(t){return this.x*=t.x,this.y*=t.y,this},_divByPoint(t){return this.x/=t.x,this.y/=t.y,this},_unit(){return this._div(this.mag()),this},_perp(){const t=this.y;return this.y=this.x,this.x=-t,this},_rotate(t){const e=Math.cos(t),n=Math.sin(t),r=e*this.x-n*this.y,i=n*this.x+e*this.y;return this.x=r,this.y=i,this},_rotateAround(t,e){const n=Math.cos(t),r=Math.sin(t),i=e.x+n*(this.x-e.x)-r*(this.y-e.y),s=e.y+r*(this.x-e.x)+n*(this.y-e.y);return this.x=i,this.y=s,this},_round(){return this.x=Math.round(this.x),this.y=Math.round(this.y),this},constructor:w};w.convert=function(t){if(t instanceof w)return t;if(Array.isArray(t))return new w(+t[0],+t[1]);if(t.x!==void 0&&t.y!==void 0)return new w(+t.x,+t.y);throw new Error("Expected [x, y] or {x, y} point format")};class q{constructor(e,n,r,i,s){this.properties={},this.extent=r,this.type=0,this.id=void 0,this._pbf=e,this._geometry=-1,this._keys=i,this._values=s,e.readFields(he,this,n)}loadGeometry(){const e=this._pbf;e.pos=this._geometry;const n=e.readVarint()+e.pos,r=[];let i,s=1,o=0,c=0,h=0;for(;e.pos<n;){if(o<=0){const u=e.readVarint();s=u&7,o=u>>3}if(o--,s===1||s===2)c+=e.readSVarint(),h+=e.readSVarint(),s===1&&(i&&r.push(i),i=[]),i&&i.push(new w(c,h));else if(s===7)i&&i.push(i[0].clone());else throw new Error(`unknown command ${s}`)}return i&&r.push(i),r}bbox(){const e=this._pbf;e.pos=this._geometry;const n=e.readVarint()+e.pos;let r=1,i=0,s=0,o=0,c=1/0,h=-1/0,u=1/0,l=-1/0;for(;e.pos<n;){if(i<=0){const a=e.readVarint();r=a&7,i=a>>3}if(i--,r===1||r===2)s+=e.readSVarint(),o+=e.readSVarint(),s<c&&(c=s),s>h&&(h=s),o<u&&(u=o),o>l&&(l=o);else if(r!==7)throw new Error(`unknown command ${r}`)}return[c,u,h,l]}toGeoJSON(e,n,r){const i=this.extent*Math.pow(2,r),s=this.extent*e,o=this.extent*n,c=this.loadGeometry();function h(f){return[(f.x+s)*360/i-180,360/Math.PI*Math.atan(Math.exp((1-(f.y+o)*2/i)*Math.PI))-90]}function u(f){return f.map(h)}let l;if(this.type===1){const f=[];for(const y of c)f.push(y[0]);const d=u(f);l=f.length===1?{type:"Point",coordinates:d[0]}:{type:"MultiPoint",coordinates:d}}else if(this.type===2){const f=c.map(u);l=f.length===1?{type:"LineString",coordinates:f[0]}:{type:"MultiLineString",coordinates:f}}else if(this.type===3){const f=fe(c),d=[];for(const y of f)d.push(y.map(u));l=d.length===1?{type:"Polygon",coordinates:d[0]}:{type:"MultiPolygon",coordinates:d}}else throw new Error("unknown feature type");const a={type:"Feature",geometry:l,properties:this.properties};return this.id!=null&&(a.id=this.id),a}}q.types=["Unknown","Point","LineString","Polygon"];function he(t,e,n){t===1?e.id=n.readVarint():t===2?ce(n,e):t===3?e.type=n.readVarint():t===4&&(e._geometry=n.pos)}function ce(t,e){const n=t.readVarint()+t.pos;for(;t.pos<n;){const r=e._keys[t.readVarint()],i=e._values[t.readVarint()];e.properties[r]=i}}function fe(t){const e=t.length;if(e<=1)return[t];const n=[];let r,i;for(let s=0;s<e;s++){const o=pe(t[s]);o!==0&&(i===void 0&&(i=o<0),i===o<0?(r&&n.push(r),r=[t[s]]):r&&r.push(t[s]))}return r&&n.push(r),n}function pe(t){let e=0;for(let n=0,r=t.length,i=r-1,s,o;n<r;i=n++)s=t[n],o=t[i],e+=(o.x-s.x)*(s.y+o.y);return e}class de{constructor(e,n){this.version=1,this.name="",this.extent=4096,this.length=0,this._pbf=e,this._keys=[],this._values=[],this._features=[],e.readFields(ge,this,n),this.length=this._features.length}feature(e){if(e<0||e>=this._features.length)throw new Error("feature index out of bounds");this._pbf.pos=this._features[e];const n=this._pbf.readVarint()+this._pbf.pos;return new q(this._pbf,n,this.extent,this._keys,this._values)}}function ge(t,e,n){t===15?e.version=n.readVarint():t===1?e.name=n.readString():t===5?e.extent=n.readVarint():t===2?e._features.push(n.pos):t===3?e._keys.push(n.readString()):t===4&&e._values.push(ye(n))}function ye(t){let e=null;const n=t.readVarint()+t.pos;for(;t.pos<n;){const r=t.readVarint()>>3;e=r===1?t.readString():r===2?t.readFloat():r===3?t.readDouble():r===4?t.readVarint64():r===5?t.readVarint():r===6?t.readSVarint():r===7?t.readBoolean():null}if(e==null)throw new Error("unknown feature value");return e}class me{constructor(e,n){this.layers=e.readFields(we,{},n)}}function we(t,e,n){if(t===3){const r=new de(n,n.readVarint()+n.pos);r.length&&(e[r.name]=r)}}function L(t,e=""){const n=new z;return xe(t,n,e),n.finish()}function xe(t,e,n=""){for(const r in t.layers)e.writeMessage(3,(i,s)=>be(i,s,n),t.layers[r])}function be(t,e,n=""){e.writeVarintField(15,t.version||1),e.writeStringField(1,t.name||""),e.writeVarintField(5,t.extent||4096);const r={jsonPrefix:n,keys:[],values:[],keycache:{},valuecache:{}};for(let o=0;o<t.length;o++)r.feature=t.feature(o),e.writeMessage(2,ve,r);const i=r.keys;for(const o of i)e.writeStringField(3,o);const s=r.values;for(const o of s)e.writeMessage(4,_e,o)}function ve(t,e){if(!t.feature)return;const n=t.feature;n.id!==void 0&&e.writeVarintField(1,n.id),e.writeMessage(2,Ee,t),e.writeVarintField(3,n.type),e.writeMessage(4,Se,n)}function Ee(t,e){for(const n in t.feature?.properties){let r=t.feature.properties[n],i=t.keycache[n];if(r==null)continue;typeof i>"u"&&(t.keys.push(n),i=t.keys.length-1,t.keycache[n]=i),e.writeVarint(i),typeof r!="string"&&typeof r!="boolean"&&typeof r!="number"&&(r=t.jsonPrefix+JSON.stringify(r));const s=typeof r+":"+r;let o=t.valuecache[s];typeof o>"u"&&(t.values.push(r),o=t.values.length-1,t.valuecache[s]=o),e.writeVarint(o)}}function P(t,e){return(e<<3)+(t&7)}function I(t){return t<<1^t>>31}function Se(t,e){const n=t.loadGeometry(),r=t.type;let i=0,s=0;for(const o of n){let c=1;r===1&&(c=o.length),e.writeVarint(P(1,c));const h=r===3?o.length-1:o.length;for(let u=0;u<h;u++){u===1&&r!==1&&e.writeVarint(P(2,h-1));const l=o[u].x-i,a=o[u].y-s;e.writeVarint(I(l)),e.writeVarint(I(a)),i+=l,s+=a}t.type===3&&e.writeVarint(P(7,1))}}function _e(t,e){const n=typeof t;n==="string"?e.writeStringField(1,t):n==="boolean"?e.writeBooleanField(7,t):n==="number"&&(t%1!==0?e.writeDoubleField(3,t):t<0?e.writeSVarintField(6,t):e.writeVarintField(5,t))}const j=`function m(e, r, t = {}) {
-  const n = { type: "Feature" };
-  return (t.id === 0 || t.id) && (n.id = t.id), t.bbox && (n.bbox = t.bbox), n.properties = r || {}, n.geometry = e, n;
+"use strict";var b=typeof document<"u"?document.currentScript:null;const P=`function x(e, r, t = {}) {
+  const o = { type: "Feature" };
+  return (t.id === 0 || t.id) && (o.id = t.id), t.bbox && (o.bbox = t.bbox), o.properties = r || {}, o.geometry = e, o;
 }
-function x(e, r, t = {}) {
-  if (e.length < 2)
-    throw new Error("coordinates must be an array of two or more positions");
-  return m({
-    type: "LineString",
-    coordinates: e
-  }, r, t);
-}
-function D(e, r = {}) {
+function C(e, r = {}) {
   const t = { type: "FeatureCollection" };
   return r.id && (t.id = r.id), r.bbox && (t.bbox = r.bbox), t.features = e, t;
 }
-function J(e) {
-  return e !== null && typeof e == "object" && !Array.isArray(e);
-}
-function _(e) {
-  if (!e)
-    throw new Error("coord is required");
-  if (!Array.isArray(e)) {
-    if (e.type === "Feature" && e.geometry !== null && e.geometry.type === "Point")
-      return [...e.geometry.coordinates];
-    if (e.type === "Point")
-      return [...e.coordinates];
-  }
-  if (Array.isArray(e) && e.length >= 2 && !Array.isArray(e[0]) && !Array.isArray(e[1]))
-    return [...e];
-  throw new Error("coord must be GeoJSON Point or an Array of numbers");
-}
-function w(e) {
-  if (Array.isArray(e))
-    return e;
-  if (e.type === "Feature") {
-    if (e.geometry !== null)
-      return e.geometry.coordinates;
-  } else if (e.coordinates)
-    return e.coordinates;
-  throw new Error(
-    "coords must be GeoJSON Feature, Geometry Object or an Array"
-  );
-}
-function V(e, r) {
-  return e.type === "FeatureCollection" ? "FeatureCollection" : e.type === "GeometryCollection" ? "GeometryCollection" : e.type === "Feature" && e.geometry !== null ? e.geometry.type : e.type;
-}
-function C(e, r, t = {}) {
-  const n = _(e), o = w(r);
-  for (let i = 0; i < o.length - 1; i++) {
-    let f = !1;
-    if (t.ignoreEndVertices && (i === 0 && (f = "start"), i === o.length - 2 && (f = "end"), i === 0 && i + 1 === o.length - 1 && (f = "both")), z(
-      o[i],
-      o[i + 1],
-      n,
-      f,
-      typeof t.epsilon > "u" ? null : t.epsilon
-    ))
-      return !0;
-  }
-  return !1;
-}
-function z(e, r, t, n, o) {
-  const i = t[0], f = t[1], u = e[0], c = e[1], a = r[0], l = r[1], y = t[0] - u, d = t[1] - c, s = a - u, p = l - c, b = y * p - d * s;
-  if (o !== null) {
-    if (Math.abs(b) > o)
-      return !1;
-  } else if (b !== 0)
-    return !1;
-  if (Math.abs(s) === Math.abs(p) && Math.abs(s) === 0)
-    return n ? !1 : t[0] === e[0] && t[1] === e[1];
-  if (n) {
-    if (n === "start")
-      return Math.abs(s) >= Math.abs(p) ? s > 0 ? u < i && i <= a : a <= i && i < u : p > 0 ? c < f && f <= l : l <= f && f < c;
-    if (n === "end")
-      return Math.abs(s) >= Math.abs(p) ? s > 0 ? u <= i && i < a : a < i && i <= u : p > 0 ? c <= f && f < l : l < f && f <= c;
-    if (n === "both")
-      return Math.abs(s) >= Math.abs(p) ? s > 0 ? u < i && i < a : a < i && i < u : p > 0 ? c < f && f < l : l < f && f < c;
-  } else return Math.abs(s) >= Math.abs(p) ? s > 0 ? u <= i && i <= a : a <= i && i <= u : p > 0 ? c <= f && f <= l : l <= f && f <= c;
-  return !1;
-}
-function $(e, r = {}) {
-  var t = typeof r == "object" ? r.mutate : r;
-  if (!e) throw new Error("geojson is required");
-  var n = V(e), o = [];
-  switch (n) {
-    case "LineString":
-      o = M(e, n);
-      break;
-    case "MultiLineString":
-    case "Polygon":
-      w(e).forEach(function(f) {
-        o.push(M(f, n));
-      });
-      break;
-    case "MultiPolygon":
-      w(e).forEach(function(f) {
-        var u = [];
-        f.forEach(function(c) {
-          u.push(M(c, n));
-        }), o.push(u);
-      });
-      break;
-    case "Point":
-      return e;
-    case "MultiPoint":
-      var i = {};
-      w(e).forEach(function(f) {
-        var u = f.join("-");
-        Object.prototype.hasOwnProperty.call(i, u) || (o.push(f), i[u] = !0);
-      });
-      break;
-    default:
-      throw new Error(n + " geometry not supported");
-  }
-  return e.coordinates ? t === !0 ? (e.coordinates = o, e) : { type: n, coordinates: o } : t === !0 ? (e.geometry.coordinates = o, e) : m({ type: n, coordinates: o }, e.properties, {
-    bbox: e.bbox,
-    id: e.id
-  });
-}
-function M(e, r) {
-  const t = w(e);
-  if (t.length === 2 && !O(t[0], t[1])) return t;
-  const n = [];
-  let o = 0, i = 1, f = 2;
-  for (n.push(t[o]); f < t.length; )
-    C(t[i], x([t[o], t[f]])) ? i = f : (n.push(t[i]), o = i, i++, f = i), f++;
-  if (n.push(t[i]), r === "Polygon" || r === "MultiPolygon") {
-    if (C(
-      n[0],
-      x([n[1], n[n.length - 2]])
-    ) && (n.shift(), n.pop(), n.push(n[0])), n.length < 4)
-      throw new Error("invalid polygon, fewer than 4 points");
-    if (!O(n[0], n[n.length - 1]))
-      throw new Error("invalid polygon, first and last points not equal");
-  }
-  return n;
-}
-function O(e, r) {
-  return e[0] === r[0] && e[1] === r[1];
-}
-function R(e) {
-  if (!e)
-    throw new Error("geojson is required");
-  switch (e.type) {
-    case "Feature":
-      return T(e);
-    case "FeatureCollection":
-      return I(e);
-    case "Point":
-    case "LineString":
-    case "Polygon":
-    case "MultiPoint":
-    case "MultiLineString":
-    case "MultiPolygon":
-    case "GeometryCollection":
-      return E(e);
-    default:
-      throw new Error("unknown GeoJSON type");
-  }
-}
-function T(e) {
-  const r = { type: "Feature" };
-  return Object.keys(e).forEach((t) => {
-    switch (t) {
-      case "type":
-      case "properties":
-      case "geometry":
-        return;
-      default:
-        r[t] = e[t];
-    }
-  }), r.properties = k(e.properties), e.geometry == null ? r.geometry = null : r.geometry = E(e.geometry), r;
-}
-function k(e) {
-  const r = {};
-  return e && Object.keys(e).forEach((t) => {
-    const n = e[t];
-    typeof n == "object" ? n === null ? r[t] = null : Array.isArray(n) ? r[t] = n.map((o) => o) : r[t] = k(n) : r[t] = n;
-  }), r;
-}
-function I(e) {
-  const r = { type: "FeatureCollection" };
-  return Object.keys(e).forEach((t) => {
-    switch (t) {
-      case "type":
-      case "features":
-        return;
-      default:
-        r[t] = e[t];
-    }
-  }), r.features = e.features.map((t) => T(t)), r;
-}
-function E(e) {
-  const r = { type: e.type };
-  return e.bbox && (r.bbox = e.bbox), e.type === "GeometryCollection" ? (r.geometries = e.geometries.map((t) => E(t)), r) : (r.coordinates = N(e.coordinates), r);
-}
-function N(e) {
-  const r = e;
-  return typeof r[0] != "object" ? r.slice() : r.map((t) => N(t));
-}
-function q(e, r) {
-  var t, n, o, i, f, u, c, a, l, y, d = 0, s = e.type === "FeatureCollection", p = e.type === "Feature", b = s ? e.features.length : 1;
-  for (t = 0; t < b; t++) {
-    for (u = s ? (
+function P(e, r) {
+  var t, o, c, a, y, s, f, n, i, u, p = 0, d = e.type === "FeatureCollection", l = e.type === "Feature", h = d ? e.features.length : 1;
+  for (t = 0; t < h; t++) {
+    for (s = d ? (
       // @ts-expect-error: Known type conflict
       e.features[t].geometry
-    ) : p ? (
+    ) : l ? (
       // @ts-expect-error: Known type conflict
       e.geometry
-    ) : e, a = s ? (
+    ) : e, n = d ? (
       // @ts-expect-error: Known type conflict
       e.features[t].properties
-    ) : p ? (
+    ) : l ? (
       // @ts-expect-error: Known type conflict
       e.properties
-    ) : {}, l = s ? (
+    ) : {}, i = d ? (
       // @ts-expect-error: Known type conflict
       e.features[t].bbox
-    ) : p ? (
+    ) : l ? (
       // @ts-expect-error: Known type conflict
       e.bbox
-    ) : void 0, y = s ? (
+    ) : void 0, u = d ? (
       // @ts-expect-error: Known type conflict
       e.features[t].id
-    ) : p ? (
+    ) : l ? (
       // @ts-expect-error: Known type conflict
       e.id
-    ) : void 0, c = u ? u.type === "GeometryCollection" : !1, f = c ? u.geometries.length : 1, o = 0; o < f; o++) {
-      if (i = c ? u.geometries[o] : u, i === null) {
+    ) : void 0, f = s ? s.type === "GeometryCollection" : !1, y = f ? s.geometries.length : 1, c = 0; c < y; c++) {
+      if (a = f ? s.geometries[c] : s, a === null) {
         if (
           // @ts-expect-error: Known type conflict
           r(
             // @ts-expect-error: Known type conflict
             null,
-            d,
-            a,
-            l,
-            y
+            p,
+            n,
+            i,
+            u
           ) === !1
         )
           return !1;
         continue;
       }
-      switch (i.type) {
+      switch (a.type) {
         case "Point":
         case "LineString":
         case "MultiPoint":
@@ -252,26 +59,26 @@ function q(e, r) {
           if (
             // @ts-expect-error: Known type conflict
             r(
-              i,
-              d,
               a,
-              l,
-              y
+              p,
+              n,
+              i,
+              u
             ) === !1
           )
             return !1;
           break;
         }
         case "GeometryCollection": {
-          for (n = 0; n < i.geometries.length; n++)
+          for (o = 0; o < a.geometries.length; o++)
             if (
               // @ts-expect-error: Known type conflict
               r(
-                i.geometries[n],
-                d,
-                a,
-                l,
-                y
+                a.geometries[o],
+                p,
+                n,
+                i,
+                u
               ) === !1
             )
               return !1;
@@ -281,13 +88,13 @@ function q(e, r) {
           throw new Error("Unknown Geometry Type");
       }
     }
-    d++;
+    p++;
   }
 }
-function X(e, r) {
-  q(e, function(t, n, o, i, f) {
-    var u = t === null ? null : t.type;
-    switch (u) {
+function T(e, r) {
+  P(e, function(t, o, c, a, y) {
+    var s = t === null ? null : t.type;
+    switch (s) {
       case null:
       case "Point":
       case "LineString":
@@ -295,225 +102,131 @@ function X(e, r) {
         return (
           // @ts-expect-error: Known type conflict
           r(
-            m(t, o, { bbox: i, id: f }),
-            n,
+            x(t, c, { bbox: a, id: y }),
+            o,
             0
           ) === !1 ? !1 : void 0
         );
     }
-    var c;
-    switch (u) {
+    var f;
+    switch (s) {
       case "MultiPoint":
-        c = "Point";
+        f = "Point";
         break;
       case "MultiLineString":
-        c = "LineString";
+        f = "LineString";
         break;
       case "MultiPolygon":
-        c = "Polygon";
+        f = "Polygon";
         break;
     }
     for (
-      var a = 0;
+      var n = 0;
       // @ts-expect-error: Known type conflict
-      a < t.coordinates.length;
-      a++
+      n < t.coordinates.length;
+      n++
     ) {
-      var l = t.coordinates[a], y = {
-        type: c,
-        coordinates: l
+      var i = t.coordinates[n], u = {
+        type: f,
+        coordinates: i
       };
       if (
         // @ts-expect-error: Known type conflict
-        r(m(y, o), n, a) === !1
+        r(x(u, c), o, n) === !1
       )
         return !1;
     }
   });
 }
-function Y(e, r) {
-  var t = e[0] - r[0], n = e[1] - r[1];
-  return t * t + n * n;
-}
-function H(e, r, t) {
-  var n = r[0], o = r[1], i = t[0] - n, f = t[1] - o;
-  if (i !== 0 || f !== 0) {
-    var u = ((e[0] - n) * i + (e[1] - o) * f) / (i * i + f * f);
-    u > 1 ? (n = t[0], o = t[1]) : u > 0 && (n += i * u, o += f * u);
-  }
-  return i = e[0] - n, f = e[1] - o, i * i + f * f;
-}
-function K(e, r) {
-  for (var t = e[0], n = [t], o, i = 1, f = e.length; i < f; i++)
-    o = e[i], Y(o, t) > r && (n.push(o), t = o);
-  return t !== o && n.push(o), n;
-}
-function v(e, r, t, n, o) {
-  for (var i = n, f, u = r + 1; u < t; u++) {
-    var c = H(e[u], e[r], e[t]);
-    c > i && (f = u, i = c);
-  }
-  i > n && (f - r > 1 && v(e, r, f, n, o), o.push(e[f]), t - f > 1 && v(e, f, t, n, o));
-}
-function W(e, r) {
-  var t = e.length - 1, n = [e[0]];
-  return v(e, 0, t, r, n), n.push(e[t]), n;
-}
-function P(e, r, t) {
-  if (e.length <= 2) return e;
-  var n = r !== void 0 ? r * r : 1;
-  return e = t ? e : K(e, n), e = W(e, n), e;
-}
-function Z(e, r = {}) {
-  var t, n, o;
-  if (r = r ?? {}, !J(r)) throw new Error("options is invalid");
-  const i = (t = r.tolerance) != null ? t : 1, f = (n = r.highQuality) != null ? n : !1, u = (o = r.mutate) != null ? o : !1;
-  if (!e) throw new Error("geojson is required");
-  if (i && i < 0) throw new Error("invalid tolerance");
-  return u !== !0 && (e = R(e)), q(e, function(c) {
-    Q(c, i, f);
-  }), e;
-}
-function Q(e, r, t) {
-  const n = e.type;
-  if (n === "Point" || n === "MultiPoint") return e;
-  if ($(e, { mutate: !0 }), n !== "GeometryCollection")
-    switch (n) {
-      case "LineString":
-        e.coordinates = P(
-          e.coordinates,
-          r,
-          t
-        );
-        break;
-      case "MultiLineString":
-        e.coordinates = e.coordinates.map(
-          (o) => P(o, r, t)
-        );
-        break;
-      case "Polygon":
-        e.coordinates = S(
-          e.coordinates,
-          r,
-          t
-        );
-        break;
-      case "MultiPolygon":
-        e.coordinates = e.coordinates.map(
-          (o) => S(o, r, t)
-        );
-    }
-  return e;
-}
-function S(e, r, t) {
-  return e.map(function(n) {
-    if (n.length < 4)
-      throw new Error("invalid polygon");
-    let o = r, i = P(n, o, t);
-    for (; !L(i) && o >= Number.EPSILON; )
-      o -= o * 0.01, i = P(n, o, t);
-    return L(i) ? ((i[i.length - 1][0] !== i[0][0] || i[i.length - 1][1] !== i[0][1]) && i.push(i[0]), i) : n;
-  });
-}
-function L(e) {
-  return e.length < 3 ? !1 : !(e.length === 3 && e[2][0] === e[0][0] && e[2][1] === e[0][1]);
-}
-function j(e) {
+function E(e) {
   if (!e) throw new Error("geojson is required");
   var r = [];
-  return X(e, function(t) {
+  return T(e, function(t) {
     r.push(t);
-  }), D(r);
+  }), C(r);
 }
-const ee = typeof TextEncoder < "u", te = typeof TextDecoder < "u", F = ee ? new TextEncoder() : null, G = te ? new TextDecoder() : null, re = (e) => {
+const L = typeof TextEncoder < "u", v = typeof TextDecoder < "u", A = L ? new TextEncoder() : null, B = v ? new TextDecoder() : null, U = (e) => {
   if (e instanceof Uint8Array) return e;
   if (ArrayBuffer.isView(e)) return new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
   if (e instanceof ArrayBuffer) return new Uint8Array(e);
   const r = JSON.stringify(e);
-  if (F) return F.encode(r);
+  if (A) return A.encode(r);
   if (typeof Buffer < "u" && typeof Buffer.from == "function") return new Uint8Array(Buffer.from(r));
   throw new Error("No TextEncoder available to encode object");
-}, ne = (e) => {
+}, F = (e) => {
   let r;
   if (e instanceof Uint8Array) r = e;
   else if (ArrayBuffer.isView(e)) r = new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
   else if (e instanceof ArrayBuffer) r = new Uint8Array(e);
   else if (typeof Buffer < "u" && typeof Buffer.isBuffer == "function" && Buffer.isBuffer(e)) r = new Uint8Array(e);
   else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");
-  return G ? JSON.parse(G.decode(r)) : typeof Buffer < "u" && typeof Buffer.from == "function" ? JSON.parse(Buffer.from(r).toString("utf8")) : JSON.parse(new TextDecoder().decode(r));
-}, ie = (e) => {
-  const r = re(e);
+  return B ? JSON.parse(B.decode(r)) : typeof Buffer < "u" && typeof Buffer.from == "function" ? JSON.parse(Buffer.from(r).toString("utf8")) : JSON.parse(new TextDecoder().decode(r));
+}, S = (e) => {
+  const r = U(e);
   return r.byteOffset === 0 && r.byteLength === r.buffer.byteLength ? r.buffer : r.buffer.slice(r.byteOffset, r.byteOffset + r.byteLength);
-}, oe = (e) => ne(e);
-function fe(e, r, t, n = 1) {
-  const [o, i, f] = r.split("|").map(Number), u = (c, a) => {
-    const l = Math.sin(a * Math.PI / 180), y = Math.pow(2, o);
-    let d = (c + 180) / 360, s = 0.5 - Math.log((1 + l) / (1 - l)) / (4 * Math.PI);
-    const p = (d * y - i) * t, b = (s * y - f) * t;
-    return { x: p, y: b };
+}, G = (e) => F(e), N = (e, r, t) => {
+  const [o, c, a] = r.split("|").map(Number), y = Math.pow(2, o) * t, s = 85.05112878, f = 1;
+  if (!e[0]?.some)
+    debugger;
+  return e[0].some((i) => {
+    const u = Math.max(Math.min(i[1], s), -s), p = Math.sin(u * Math.PI / 180), d = (i[0] + 180) / 360, l = 0.5 - Math.log((1 + p) / (1 - p)) / (4 * Math.PI), h = d * y, b = l * y, g = Math.floor(h / t), w = Math.floor(b / t), m = Math.floor(h - g * t), M = Math.floor(b - w * t);
+    return w != a || g != c || m <= f || M <= f || m >= t - f || M >= t - f;
+  });
+};
+function k(e, r = {}) {
+  const { unique: t = !1 } = r, o = t ? /* @__PURE__ */ new Set() : null;
+  let c = 0;
+  const a = (n) => Array.isArray(n) && n.length >= 2 && typeof n[0] == "number" && typeof n[1] == "number", y = (n) => {
+    t ? o.add(n.slice(0, 3).join(",")) : c++;
   };
-  for (const c of e) {
-    const [a, l] = c, y = u(a, l);
-    if (y.x < n || y.x > t - n || y.y < n || y.y > t - n)
-      return !0;
-  }
-  return !1;
-}
-function ae(e, r = {}) {
-  const { unique: t = !1 } = r, n = t ? /* @__PURE__ */ new Set() : null;
-  let o = 0;
-  const i = (a) => Array.isArray(a) && a.length >= 2 && typeof a[0] == "number" && typeof a[1] == "number", f = (a) => {
-    t ? n.add(a.slice(0, 3).join(",")) : o++;
-  };
-  function u(a) {
-    if (i(a)) {
-      f(a);
+  function s(n) {
+    if (a(n)) {
+      y(n);
       return;
     }
-    if (Array.isArray(a)) for (const l of a) u(l);
+    if (Array.isArray(n)) for (const i of n) s(i);
   }
-  function c(a) {
-    if (a) {
-      if (a.type === "FeatureCollection") {
-        for (const l of a.features || []) c(l);
+  function f(n) {
+    if (n) {
+      if (n.type === "FeatureCollection") {
+        for (const i of n.features || []) f(i);
         return;
       }
-      if (a.type === "Feature") {
-        c(a.geometry);
+      if (n.type === "Feature") {
+        f(n.geometry);
         return;
       }
-      if (a.type === "GeometryCollection") {
-        for (const l of a.geometries || []) c(l);
+      if (n.type === "GeometryCollection") {
+        for (const i of n.geometries || []) f(i);
         return;
       }
-      a.coordinates !== void 0 && u(a.coordinates);
+      n.coordinates !== void 0 && s(n.coordinates);
     }
   }
-  return c(e), t ? n.size : o;
+  return f(e), t ? o.size : c;
 }
-const B = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
-B.onmessage = (e) => {
-  const r = e.data, t = oe(r), n = t.tolerance, o = t.unique, i = t.tileSize, f = !0, u = /* @__PURE__ */ new Map();
-  t.collection.features.forEach((y) => {
-    const d = y.id, s = u.get(d) || [];
-    s.push(y), u.set(d, s);
+const O = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
+O.onmessage = (e) => {
+  const r = e.data, t = G(r);
+  t.tolerance;
+  const o = t.unique, c = t.tileSize, a = /* @__PURE__ */ new Map();
+  t.collection.features.forEach((i) => {
+    const u = i.id, p = a.get(u) || [];
+    p.push(i), a.set(u, p);
   });
-  let c = 0;
-  const a = /* @__PURE__ */ new Map();
-  u.forEach((y, d) => {
-    let s = { type: "FeatureCollection", features: y };
-    s = j(s), s.features.forEach((h, U) => {
-      h.properties._index = \`\${o}|\${d}|\${U}\`, c += ae(h);
-    });
-    const p = s.features.filter((h) => !h.properties.clipped), b = s.features.filter((h) => h.properties.clipped), A = [], g = [];
-    b.forEach((h) => {
-      fe(h.geometry.coordinates, o, i) ? A.push(h) : (h.properties.clipped = !1, g.push(h));
-    }), s.features = [...p, ...g, ...A], a.set(d, Z(s, { tolerance: n, mutate: f }));
+  let y = 0;
+  const s = /* @__PURE__ */ new Map();
+  a.forEach((i, u) => {
+    const p = E({ type: "FeatureCollection", features: i }), d = { type: "FeatureCollection", features: [] };
+    d.features = p.features.filter((l) => l.geometry.type === "Polygon").map((l, h) => {
+      const b = \`\${o}|\${u}|\${h}\`, g = N(l.geometry.coordinates, l.properties._tile, c), w = Object.assign({}, l.properties, { _index: b, clipped: g }), m = { type: "Feature", geometry: l.geometry, properties: w };
+      return y += k(m), m;
+    }), s.set(u, d);
   });
-  const l = Object.assign({}, Object.fromEntries(a), { unique: o, type: "simplified", size: c });
-  B.postMessage(ie(l));
+  const f = Object.fromEntries(s), n = Object.assign({}, f, { unique: o, type: "simplified", size: y });
+  O.postMessage(S(n));
 };
-`,O=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",j],{type:"text/javascript;charset=utf-8"});function Te(t){let e;try{if(e=O&&(self.URL||self.webkitURL).createObjectURL(O),!e)throw"";const n=new Worker(e,{type:"module",name:t?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(e)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(j),{type:"module",name:t?.name})}}const W=`var et = /^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i, Oe = Math.ceil, H = Math.floor, V = "[BigNumber Error] ", Be = V + "Number primitive has more than 15 significant digits: ", J = 1e14, P = 14, Re = 9007199254740991, _e = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], se = 1e7, U = 1e9;
+`,v=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",P],{type:"text/javascript;charset=utf-8"});function M(a){let n;try{if(n=v&&(self.URL||self.webkitURL).createObjectURL(v),!n)throw"";const e=new Worker(n,{type:"module",name:a?.name});return e.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(n)}),e}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(P),{type:"module",name:a?.name})}}const L=`var et = /^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i, Oe = Math.ceil, H = Math.floor, V = "[BigNumber Error] ", Be = V + "Number primitive has more than 15 significant digits: ", J = 1e14, P = 14, Re = 9007199254740991, _e = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], se = 1e7, U = 1e9;
 function Ze(i) {
   var e, t, n, r = T.prototype = { constructor: T, toString: null, valueOf: null }, u = new T(1), a = 20, f = 4, E = -7, p = 21, b = -1e7, v = 1e7, O = !1, L = 1, I = 0, M = {
     prefix: "",
@@ -2593,7 +2306,9 @@ const qt = (i, e) => {
   }
 }, He = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
 He.onmessage = (i) => {
-  const e = i.data, t = Lt(e), n = Object.values(t.pieces), r = t.tolerance || 1e-5, u = t.unit || "meters", a = /* @__PURE__ */ new Map();
+  const e = i.data, t = Lt(e), n = Object.values(t.pieces), r = t.tolerance || 1e-5, u = t.unit || "meters";
+  t.tileSize;
+  const a = /* @__PURE__ */ new Map();
   n.forEach((f) => {
     for (const [E, p] of Object.entries(f)) {
       const b = a.get(E) || [];
@@ -2604,7 +2319,7 @@ He.onmessage = (i) => {
     if (f === "size") continue;
     let p = {
       type: "FeatureCollection",
-      features: E.reduce((v, O) => [...v, ...O.features], [])
+      features: E.reduce((v, O) => [...v, ...O.features], []).filter((v) => v.geometry.type === "Polygon")
     };
     if (p.features.some((v) => v.geometry.type === "MultiPolygon") && (p = ze(p)), p.features.some((v) => v.properties.clipped) && p.features.length > 1) {
       let v = {
@@ -2641,4 +2356,4 @@ He.onmessage = (i) => {
     p.features = p.features.map((v) => (v.properties && v.properties._area != null && v.properties._area > 0 ? (v.properties._localSortKey = b / v.properties._area, v.properties._globalSortKey = 1 / v.properties._area) : (v.properties._localSortKey = 1 / 0, v.properties._globalSortKey = 1 / 0), v)), p.id = f, He.postMessage(Pt(p));
   }
 };
-`,B=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",W],{type:"text/javascript;charset=utf-8"});function ke(t){let e;try{if(e=B&&(self.URL||self.webkitURL).createObjectURL(B),!e)throw"";const n=new Worker(e,{type:"module",name:t?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(e)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(W),{type:"module",name:t?.name})}}class C{constructor(e,n={}){const r=typeof navigator<"u"&&navigator.hardwareConcurrency||2,{size:i=Math.min(r,2),minSize:s=1,maxSize:o=Math.max(i,r),workerOptions:c={},maxTasksPerWorker:h=1/0,idleTimeout:u=6e4,taskQueue:l=!0}=n;this._workerSource=e,this._workerOptions=c,this._maxTasksPerWorker=h,this.minSize=Math.max(0,s),this.maxSize=Math.max(this.minSize,o),this.idleTimeout=Math.max(0,u),this.taskQueueEnabled=!!l,this.workers=[],this.queue=[],this._listeners={message:new Set,error:new Set,messageerror:new Set,idle:new Set},this._onmessage=null,this._onerror=null,this._onidle=null,this._nextIndex=0,this._isIdle=!0;const a=Math.min(Math.max(i,this.minSize),this.maxSize);for(let f=0;f<a;f++)this._addWorkerInstance(f);this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2)))}_createWorkerInstance(){if(typeof this._workerSource=="function")return new this._workerSource;if(typeof this._workerSource=="string")return new Worker(new URL(this._workerSource,typeof document>"u"?require("url").pathToFileURL(__filename).href:T&&T.tagName.toUpperCase()==="SCRIPT"&&T.src||new URL("maplibre-properlabels.cjs.js",document.baseURI).href),this._workerOptions);throw new Error("Invalid workerSource: expected Worker factory or relative path string")}_addWorkerInstance(e){const n=this._createWorkerInstance(),r={id:e,worker:n,tasks:0,lastActive:Date.now()};return this.workers.push(r),n.onmessage=i=>{if(r.tasks=Math.max(0,r.tasks-1),r.lastActive=Date.now(),this.queue.length>0&&r.tasks<this._maxTasksPerWorker){const s=this.queue.shift();try{s.transfer?n.postMessage(s.message,s.transfer):n.postMessage(s.message),r.tasks++}catch(o){console.error("Failed to dispatch queued message to worker",o)}}if(this._onmessage)try{this._onmessage(i)}catch(s){console.error("Pool onmessage handler error",s)}for(const s of this._listeners.message)try{s(i)}catch(o){console.error("pool listener error",o)}this._updateIdleState()},n.onerror=i=>{if(this._onerror)try{this._onerror(i)}catch(s){console.error("Pool onerror handler error",s)}for(const s of this._listeners.error)try{s(i)}catch(o){console.error("pool error listener error",o)}},n.onmessageerror=i=>{for(const s of this._listeners.messageerror)try{s(i)}catch(o){console.error("pool messageerror listener error",o)}},r}_findLeastLoadedWorker(){if(!this.workers.length)return null;let e=this.workers[0];for(let n=1;n<this.workers.length;n++)this.workers[n].tasks<e.tasks&&(e=this.workers[n]);return e}postMessage(e,n){const r=this._findLeastLoadedWorker();if(r&&r.tasks<this._maxTasksPerWorker)try{return n?r.worker.postMessage(e,n):r.worker.postMessage(e),r.tasks++,r.lastActive=Date.now(),this._updateIdleState(),!0}catch(s){return console.error("Failed to postMessage to worker",s),!1}if(this.workers.length<this.maxSize){const s=this.workers.length,o=this._addWorkerInstance(s);try{return n?o.worker.postMessage(e,n):o.worker.postMessage(e),o.tasks++,o.lastActive=Date.now(),this._updateIdleState(),!0}catch(c){return console.error("Failed to postMessage to new worker",c),!1}}if(this.taskQueueEnabled)return this.queue.push({message:e,transfer:n}),this._updateIdleState(),!0;const i=this.workers[this._nextIndex%this.workers.length];this._nextIndex++;try{return n?i.worker.postMessage(e,n):i.worker.postMessage(e),i.tasks++,i.lastActive=Date.now(),this._updateIdleState(),!0}catch(s){return console.error("Failed to postMessage to fallback worker",s),!1}}broadcast(e,n){for(const r of this.workers)try{n?r.worker.postMessage(e,n):r.worker.postMessage(e),r.tasks++,r.lastActive=Date.now()}catch(i){console.error("broadcast error",i)}this._updateIdleState()}addWorker(){return this._addWorkerInstance(this.workers.length)}removeWorker(){const e=this.workers.pop();if(e)try{e.worker.terminate()}catch{}}_reapIdleWorkers(){if(this.idleTimeout<=0)return;const e=Date.now();for(let n=this.workers.length-1;n>=0;n--){const r=this.workers[n];if(this.workers.length<=this.minSize)break;if(r.tasks===0&&e-(r.lastActive||0)>this.idleTimeout){try{r.worker.terminate()}catch{}this.workers.splice(n,1)}}this._updateIdleState()}_emitIdle(){const e={data:{type:"pool:idle",stats:this.getStats()}};if(this._isIdle=!0,this._onmessage)try{this._onmessage(e)}catch(n){console.error("Pool onmessage handler error",n)}if(this._onidle)try{this._onidle(e)}catch(n){console.error("Pool onidle handler error",n)}for(const n of this._listeners.message)try{n(e)}catch(r){console.error("pool listener error",r)}for(const n of this._listeners.idle)try{n(e)}catch(r){console.error("pool idle listener error",r)}}_updateIdleState(){const n=this.workers.length>0&&this.workers.every(s=>s.tasks===0),r=this.queue.length===0,i=n&&r;i&&!this._isIdle?this._emitIdle():!i&&this._isIdle&&(this._isIdle=!1)}terminate(){this._reaperInterval&&(clearInterval(this._reaperInterval),this._reaperInterval=null);for(const e of this.workers)try{e.worker.terminate()}catch{}this.workers=[],this.queue=[]}getStats(){return this.workers.map(e=>({id:e.id,tasks:e.tasks,lastActive:e.lastActive}))}addEventListener(e,n){if(e in this._listeners&&(this._listeners[e].add(n),e==="idle"&&this._isIdle)){const r={data:{type:"pool:idle",stats:this.getStats()}};try{n(r)}catch(i){console.error("pool idle listener error",i)}}}removeEventListener(e,n){e in this._listeners&&this._listeners[e].delete(n)}get onmessage(){return this._onmessage}set onmessage(e){this._onmessage=e}get onerror(){return this._onerror}set onerror(e){this._onerror=e}get onidle(){return this._onidle}set onidle(e){if(this._onidle=e,typeof e=="function"&&this._isIdle){const n={data:{type:"pool:idle",stats:this.getStats()}};try{e(n)}catch(r){console.error("Pool onidle handler error",r)}}}}class N{constructor({maxEntries:e=1/0,maxWeight:n=1/0,weightFn:r=()=>1,defaultTTL:i=6e4,maxPoolSize:s=1e3,rejectOversized:o=!1,onEvict:c=null,onExpire:h=null,initialPoolSize:u=0,maxCleanupPerTick:l=100}={}){this.maxEntries=e,this.maxWeight=n,this.weightFn=r,this.defaultTTL=i,this.maxPoolSize=s,this.rejectOversized=!!o,this.onEvict=typeof c=="function"?c:null,this.onExpire=typeof h=="function"?h:null,this.maxCleanupPerTick=Number.isFinite(+l)?Math.max(1,+l):100,this.map=new Map,this.head=null,this.tail=null,this.pool=[];for(let a=0;a<Math.min(u||0,this.maxPoolSize);a++)this.pool.push({key:null,value:null,weight:0,expiresAt:0,prev:null,next:null});this.currentWeight=0,this.hits=0,this.misses=0,this.evictions=0,this.rejected=0,this._cleanupTimer=null,this._cleanupRunning=!1,this._cleanupParams=null,this._cleanupCursor=null}_allocNode(e,n,r,i){const s=this.pool.pop()||{key:null,value:null,weight:0,expiresAt:0,prev:null,next:null};return s.key=e,s.value=n,s.weight=r||0,s.expiresAt=i||0,s.prev=null,s.next=null,s}_freeNode(e){e.key=null,e.value=null,e.weight=0,e.expiresAt=0,e.prev=null,e.next=null,this.pool.length<this.maxPoolSize&&this.pool.push(e)}_append(e){if(!this.tail){this.head=this.tail=e;return}e.prev=this.tail,e.next=null,this.tail.next=e,this.tail=e}_remove(e){const n=e.prev,r=e.next;n?n.next=r:this.head=r,r?r.prev=n:this.tail=n,e.prev=e.next=null}_moveToTail(e){this.tail!==e&&(this._remove(e),this._append(e))}_popHead(){const e=this.head;return e?(this._remove(e),e):null}_evictIfNeeded(){for(;this.map.size>this.maxEntries||this.currentWeight>this.maxWeight;){const e=this.head;if(!e)break;const n=e.next,r=e.key,i=e.value;this._cleanupCursor===e&&(this._cleanupCursor=n||this.head),this._remove(e),this.map.delete(r),this.currentWeight-=e.weight||0,this.evictions++;try{this.onEvict&&this.onEvict(r,i,"evicted")}catch{}this._freeNode(e)}}set(e,n,{ttl:r=this.defaultTTL,weight:i=null}={}){const s=Date.now(),o=r==null||r===1/0?0:s+r,c=i??(this.weightFn(n)||0),h=Number.isFinite(+c)?Math.max(0,+c):0;if(this.rejectOversized&&Number.isFinite(this.maxWeight)&&h>this.maxWeight){this.rejected++;try{this.onEvict&&this.onEvict(e,n,"rejected-oversized")}catch{}return this.rejectOversized?!1:this}if(this.map.has(e)){const u=this.map.get(e);this.currentWeight-=u.weight||0,u.value=n,u.weight=h,u.expiresAt=o,this.currentWeight+=u.weight||0,this._moveToTail(u)}else{const u=this._allocNode(e,n,h,o);this.map.set(e,u),this._append(u),this.currentWeight+=u.weight||0,this._evictIfNeeded()}return this}get(e){const n=this.map.get(e),r=Date.now();if(!n){this.misses++;return}if(n.expiresAt&&n.expiresAt<=r){const i=n.key,s=n.value,o=n.next;this.map.delete(i),this.currentWeight-=n.weight||0,this._cleanupCursor===n&&(this._cleanupCursor=o||this.head),this._remove(n);try{this.onExpire&&this.onExpire(i,s)}catch{}this._freeNode(n),this.misses++;return}return this._moveToTail(n),this.hits++,n.value}peek(e){const n=this.map.get(e);if(n&&!(n.expiresAt&&n.expiresAt<=Date.now()))return n.value}has(e,{ignoreExpiry:n=!1}={}){const r=this.map.get(e);return!(!r||!n&&r.expiresAt&&r.expiresAt<=Date.now())}hasEqual(e,n,{ignoreExpiry:r=!1}={}){const i=this.map.get(e);if(!i||!r&&i.expiresAt&&i.expiresAt<=Date.now())return!1;const s=i.value;if(s===n)return!0;if(typeof s!=="object"||s===null||typeof n!=="object"||n===null)return s===n;const h=new WeakMap,u=(l,a)=>{if(l===a)return!0;if(l==null||a==null||typeof l!=="object"||typeof a!=="object")return l===a;const y=h.get(l);if(y&&y.has(a))return!0;if(y||h.set(l,new WeakSet),h.get(l).add(a),Object.getPrototypeOf(l)!==Object.getPrototypeOf(a))return!1;if(typeof Uint8Array<"u"&&l instanceof Uint8Array){if(!(a instanceof Uint8Array)||l.length!==a.length)return!1;for(let p=0;p<l.length;p++)if(l[p]!==a[p])return!1;return!0}if(Array.isArray(l)){if(!Array.isArray(a)||l.length!==a.length)return!1;for(let p=0;p<l.length;p++)if(!u(l[p],a[p]))return!1;return!0}if(ArrayBuffer.isView(l)){if(!ArrayBuffer.isView(a)||l.byteLength!==a.byteLength)return!1;const p=new Uint8Array(l.buffer,l.byteOffset||0,l.byteLength),g=new Uint8Array(a.buffer,a.byteOffset||0,a.byteLength);for(let m=0;m<p.length;m++)if(p[m]!==g[m])return!1;return!0}if(l instanceof ArrayBuffer){if(!(a instanceof ArrayBuffer)||l.byteLength!==a.byteLength)return!1;const p=new Uint8Array(l),g=new Uint8Array(a);for(let m=0;m<p.length;m++)if(p[m]!==g[m])return!1;return!0}if(l instanceof Date)return a instanceof Date?l.getTime()===a.getTime():!1;if(l instanceof RegExp)return a instanceof RegExp?l.toString()===a.toString():!1;if(l instanceof Map){if(!(a instanceof Map)||l.size!==a.size)return!1;for(const[p,g]of l)if(!a.has(p)||!u(g,a.get(p)))return!1;return!0}if(l instanceof Set){if(!(a instanceof Set)||l.size!==a.size)return!1;let p=!0;for(const g of l)if(g!==null&&typeof g=="object"){p=!1;break}if(p){for(const g of l)if(!a.has(g))return!1;return!0}for(const g of l){let m=!1;for(const $ of a)if(u(g,$)){m=!0;break}if(!m)return!1}return!0}const v=Object.keys(l),x=Object.keys(a);if(v.length!==x.length)return!1;for(let p=0;p<v.length;p++){const g=v[p];if(!Object.prototype.hasOwnProperty.call(a,g)||!u(l[g],a[g]))return!1}return!0};return u(s,n)}delete(e){const n=this.map.get(e);if(!n)return!1;const r=n.next;this.map.delete(e),this.currentWeight-=n.weight||0,this._cleanupCursor===n&&(this._cleanupCursor=r||this.head),this._remove(n);try{this.onEvict&&this.onEvict(n.key,n.value,"deleted")}catch{}return this._freeNode(n),!0}clear(){for(let e=this.head;e;){const n=e.next;this.pool.length<this.maxPoolSize&&this.pool.push(e),e=n}this.head=this.tail=null,this.map.clear(),this.currentWeight=0,this._cleanupCursor=null}cleanupExpired(){return this.cleanupExpiredUpTo()}cleanupExpiredUpTo(e=1/0){const n=Date.now();let r=0,i=this._cleanupCursor&&this.map.get(this._cleanupCursor.key)===this._cleanupCursor?this._cleanupCursor:this.head;for(;i&&r<e;){const s=i.next;if(i.expiresAt&&i.expiresAt<=n){const o=i.key,c=i.value;this.map.delete(o),this.currentWeight-=i.weight||0,this._cleanupCursor===i&&(this._cleanupCursor=s||this.head),this._remove(i);try{this.onExpire&&this.onExpire(o,c)}catch{}this._freeNode(i),this.evictions++}i=s,r++}return this._cleanupCursor=i||this.head,r}startCleanup(e={}){let n,r;typeof e=="number"?(n=e,r=this.maxCleanupPerTick):(n=Number.isFinite(+e.interval)?+e.interval:Math.max(1e3,Math.min(this.defaultTTL||6e4,6e4)),r=Number.isFinite(+e.maxCleanupPerTick)?Math.max(1,+e.maxCleanupPerTick):this.maxCleanupPerTick),this.stopCleanup(),this._cleanupParams={interval:n,maxCleanupPerTick:r};const i=()=>{if(this._cleanupTimer!=null){if(this._cleanupRunning){this._cleanupTimer=setTimeout(i,this._cleanupParams.interval);return}this._cleanupRunning=!0;try{this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick)}finally{this._cleanupRunning=!1}this._cleanupTimer=setTimeout(i,this._cleanupParams.interval)}};this._cleanupTimer=setTimeout(i,n)}stopCleanup(){this._cleanupTimer&&(clearTimeout(this._cleanupTimer),this._cleanupTimer=null),this._cleanupRunning=!1,this._cleanupParams=null}get size(){return this.map.size}stats(){return{size:this.size,weight:this.currentWeight,hits:this.hits,misses:this.misses,evictions:this.evictions,rejected:this.rejected,poolSize:this.pool.length}}resize({maxEntries:e,maxWeight:n}={}){Number.isFinite(+e)&&(this.maxEntries=Math.max(0,+e)),Number.isFinite(+n)&&(this.maxWeight=Math.max(0,+n)),this._evictIfNeeded()}*entries(e="MRU"){if(e==="MRU")for(let n=this.tail;n;n=n.prev)yield[n.key,n.value];else for(let n=this.head;n;n=n.next)yield[n.key,n.value]}*keys(e="MRU"){for(const[n]of this.entries(e))yield n}*values(e="MRU"){for(const[,n]of this.entries(e))yield n}}const Pe=typeof TextEncoder<"u",Ae=typeof TextDecoder<"u",V=Pe?new TextEncoder:null,U=Ae?new TextDecoder:null,Me=t=>{if(t instanceof Uint8Array)return t;if(ArrayBuffer.isView(t))return new Uint8Array(t.buffer,t.byteOffset,t.byteLength);if(t instanceof ArrayBuffer)return new Uint8Array(t);const e=JSON.stringify(t);if(V)return V.encode(e);if(typeof Buffer<"u"&&typeof Buffer.from=="function")return new Uint8Array(Buffer.from(e));throw new Error("No TextEncoder available to encode object")},Fe=t=>{let e;if(t instanceof Uint8Array)e=t;else if(ArrayBuffer.isView(t))e=new Uint8Array(t.buffer,t.byteOffset,t.byteLength);else if(t instanceof ArrayBuffer)e=new Uint8Array(t);else if(typeof Buffer<"u"&&typeof Buffer.isBuffer=="function"&&Buffer.isBuffer(t))e=new Uint8Array(t);else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");return U?JSON.parse(U.decode(e)):typeof Buffer<"u"&&typeof Buffer.from=="function"?JSON.parse(Buffer.from(e).toString("utf8")):JSON.parse(new TextDecoder().decode(e))},D=t=>{const e=Me(t);return e.byteOffset===0&&e.byteLength===e.buffer.byteLength?e.buffer:e.buffer.slice(e.byteOffset,e.byteOffset+e.byteLength)},G=t=>Fe(t),Re=(t,[e,n])=>({...t,[e]:{...n,feature:i=>{const s=n.feature(i),c=s.loadGeometry().flat(1/0).some(h=>h.x>=n.extent-1||h.y>=n.extent-1||h.x<=1||h.y<=1);return s.properties.clipped=c,s}}});class K{constructor(e){this.map=e.map,this.source=e.source instanceof maplibregl.VectorTileSource?e.source:this.map.getSource(e.source),this.sourceLayer=e.sourceLayer,this.fid=e.fid||"id",this.tiles=this.source.tiles.map(o=>o.split("{z}")[0]),this.tileSize=this.source.tileSize||512,this.tolerance=e.tolerance||1e-5,this.cacheSize=e.cacheSize||5e3,this.units=e.units||"meters",this.seed=!1,this.map.addSource(this.source.id+"-proper",{type:"geojson",maxzoom:this.source.maxzoom,promoteId:"_index",data:{}}),this.gjSource=this.map.getSource(this.source.id+"-proper"),maplibregl.addProtocol("proper",this._protocol),this.map.setTransformRequest((o,c)=>this.tiles.some(u=>o.startsWith(u))&&c==="Tile"?{url:"proper://"+o}:{url:o});const n=new C(Te,{size:6}),r=new C(ke,{size:4}),i=new N({maxEntries:this.cacheSize,maxWeight:this.cacheSize*5e3,weight:o=>o.size||0});n.onmessage=o=>{if(o.data instanceof ArrayBuffer){const c=o.data,h=G(c);if(h.type==="simplified"){const{unique:u,type:l,...a}=h;i.set(u,a)}}};const s=new N({maxEntries:this.cacheSize,maxWeight:this.cacheSize*5e3,weight:o=>o.features.length||0});return r.onmessage=o=>{if(o.data instanceof ArrayBuffer){const c=o.data,h=G(c),{id:u,features:l}=h,a={};if(s.has(u)&&!s.hasEqual(u,l)){const f=s.get(u),d=[...new Set(f.map(y=>y.properties._index))];a.remove=d,a.add=l,s.set(u,l)}else s.set(u,l),a.add=l;(a.add.length>0||a.remove.length>0)&&this.gjSource.updateData(a)}},this.map.on("sourcedata",o=>{if(o.sourceId===this.source.id){const{z:c,x:h,y:u}=o.tile.tileID.canonical,l=`${c}|${h}|${u}`;if(!i.has(l)){const a=this.tolerance*Math.pow(10,-.301*c+5.19),f=[],d=this.source.type==="vector"?{sourceLayer:this.sourceLayer}:{};o.tile.querySourceFeatures(f,d);const y={collection:{type:"FeatureCollection",features:f.map((x,p)=>({id:x.properties[this.fid]||x.id,geometry:x.geometry,properties:{...x.properties,_index:`${l}|${p}`,_tile:l}}))},tolerance:a,unique:l,tileSize:this.tileSize},v=D(y);n.postMessage(v)}o.isSourceLoaded&&n.addEventListener("idle",a=>{const d={pieces:Object.fromEntries(i.entries()),tolerance:this.tolerance,unit:this.units},y=D(d);r.postMessage(y)})}}),this.map.refreshTiles(this.source.id),this.gjSource}_protocol=async e=>{const n=e.url.replace("proper://",""),r=e.url.split(/\/|\./i);if(r===null||r.length<4)return console.warn(`Malformed URL: ${e.url}`),{data:null};const i=await fetch(n);let s;if(i.status===200){const o=r.length,[c,h,u]=r.slice(o-4,o-1).map(d=>d*1),l=await i.arrayBuffer(),a=new me(new z(l)),f={layers:Object.entries(a.layers).reduce(Re,{})};s=L(f).buffer}else s=L({}).buffer;return{data:s}}}maplibregl.VectorTileSource.prototype.ProperLabels=function(t){const e=Object.assign({},t,{map:this._map,source:this});return this._proper||(this._proper=new K(e)),this._proper};module.exports=K;
+`,E=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",L],{type:"text/javascript;charset=utf-8"});function N(a){let n;try{if(n=E&&(self.URL||self.webkitURL).createObjectURL(E),!n)throw"";const e=new Worker(n,{type:"module",name:a?.name});return e.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(n)}),e}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(L),{type:"module",name:a?.name})}}class S{constructor(n,e={}){const t=typeof navigator<"u"&&navigator.hardwareConcurrency||2,{size:r=Math.min(t,2),minSize:s=1,maxSize:l=Math.max(r,t),workerOptions:c={},maxTasksPerWorker:f=1/0,idleTimeout:u=6e4,taskQueue:i=!0}=e;this._workerSource=n,this._workerOptions=c,this._maxTasksPerWorker=f,this.minSize=Math.max(0,s),this.maxSize=Math.max(this.minSize,l),this.idleTimeout=Math.max(0,u),this.taskQueueEnabled=!!i,this.workers=[],this.queue=[],this._listeners={message:new Set,error:new Set,messageerror:new Set,idle:new Set},this._onmessage=null,this._onerror=null,this._onidle=null,this._nextIndex=0,this._isIdle=!0;const o=Math.min(Math.max(r,this.minSize),this.maxSize);for(let y=0;y<o;y++)this._addWorkerInstance(y);this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2)))}_createWorkerInstance(){if(typeof this._workerSource=="function")return new this._workerSource;if(typeof this._workerSource=="string")return new Worker(new URL(this._workerSource,typeof document>"u"?require("url").pathToFileURL(__filename).href:b&&b.tagName.toUpperCase()==="SCRIPT"&&b.src||new URL("maplibre-properlabels.cjs.js",document.baseURI).href),this._workerOptions);throw new Error("Invalid workerSource: expected Worker factory or relative path string")}_addWorkerInstance(n){const e=this._createWorkerInstance(),t={id:n,worker:e,tasks:0,lastActive:Date.now()};return this.workers.push(t),e.onmessage=r=>{if(t.tasks=Math.max(0,t.tasks-1),t.lastActive=Date.now(),this.queue.length>0&&t.tasks<this._maxTasksPerWorker){const s=this.queue.shift();try{s.transfer?e.postMessage(s.message,s.transfer):e.postMessage(s.message),t.tasks++}catch(l){console.error("Failed to dispatch queued message to worker",l)}}if(this._onmessage)try{this._onmessage(r)}catch(s){console.error("Pool onmessage handler error",s)}for(const s of this._listeners.message)try{s(r)}catch(l){console.error("pool listener error",l)}this._updateIdleState()},e.onerror=r=>{if(this._onerror)try{this._onerror(r)}catch(s){console.error("Pool onerror handler error",s)}for(const s of this._listeners.error)try{s(r)}catch(l){console.error("pool error listener error",l)}},e.onmessageerror=r=>{for(const s of this._listeners.messageerror)try{s(r)}catch(l){console.error("pool messageerror listener error",l)}},t}_findLeastLoadedWorker(){if(!this.workers.length)return null;let n=this.workers[0];for(let e=1;e<this.workers.length;e++)this.workers[e].tasks<n.tasks&&(n=this.workers[e]);return n}postMessage(n,e){const t=this._findLeastLoadedWorker();if(t&&t.tasks<this._maxTasksPerWorker)try{return e?t.worker.postMessage(n,e):t.worker.postMessage(n),t.tasks++,t.lastActive=Date.now(),this._updateIdleState(),!0}catch(s){return console.error("Failed to postMessage to worker",s),!1}if(this.workers.length<this.maxSize){const s=this.workers.length,l=this._addWorkerInstance(s);try{return e?l.worker.postMessage(n,e):l.worker.postMessage(n),l.tasks++,l.lastActive=Date.now(),this._updateIdleState(),!0}catch(c){return console.error("Failed to postMessage to new worker",c),!1}}if(this.taskQueueEnabled)return this.queue.push({message:n,transfer:e}),this._updateIdleState(),!0;const r=this.workers[this._nextIndex%this.workers.length];this._nextIndex++;try{return e?r.worker.postMessage(n,e):r.worker.postMessage(n),r.tasks++,r.lastActive=Date.now(),this._updateIdleState(),!0}catch(s){return console.error("Failed to postMessage to fallback worker",s),!1}}broadcast(n,e){for(const t of this.workers)try{e?t.worker.postMessage(n,e):t.worker.postMessage(n),t.tasks++,t.lastActive=Date.now()}catch(r){console.error("broadcast error",r)}this._updateIdleState()}addWorker(){return this._addWorkerInstance(this.workers.length)}removeWorker(){const n=this.workers.pop();if(n)try{n.worker.terminate()}catch{}}_reapIdleWorkers(){if(this.idleTimeout<=0)return;const n=Date.now();for(let e=this.workers.length-1;e>=0;e--){const t=this.workers[e];if(this.workers.length<=this.minSize)break;if(t.tasks===0&&n-(t.lastActive||0)>this.idleTimeout){try{t.worker.terminate()}catch{}this.workers.splice(e,1)}}this._updateIdleState()}_emitIdle(){const n={data:{type:"pool:idle",stats:this.getStats()}};if(this._isIdle=!0,this._onmessage)try{this._onmessage(n)}catch(e){console.error("Pool onmessage handler error",e)}if(this._onidle)try{this._onidle(n)}catch(e){console.error("Pool onidle handler error",e)}for(const e of this._listeners.message)try{e(n)}catch(t){console.error("pool listener error",t)}for(const e of this._listeners.idle)try{e(n)}catch(t){console.error("pool idle listener error",t)}}_updateIdleState(){const e=this.workers.length>0&&this.workers.every(s=>s.tasks===0),t=this.queue.length===0,r=e&&t;r&&!this._isIdle?this._emitIdle():!r&&this._isIdle&&(this._isIdle=!1)}terminate(){this._reaperInterval&&(clearInterval(this._reaperInterval),this._reaperInterval=null);for(const n of this.workers)try{n.worker.terminate()}catch{}this.workers=[],this.queue=[]}getStats(){return this.workers.map(n=>({id:n.id,tasks:n.tasks,lastActive:n.lastActive}))}addEventListener(n,e){if(n in this._listeners&&(this._listeners[n].add(e),n==="idle"&&this._isIdle)){const t={data:{type:"pool:idle",stats:this.getStats()}};try{e(t)}catch(r){console.error("pool idle listener error",r)}}}removeEventListener(n,e){n in this._listeners&&this._listeners[n].delete(e)}get onmessage(){return this._onmessage}set onmessage(n){this._onmessage=n}get onerror(){return this._onerror}set onerror(n){this._onerror=n}get onidle(){return this._onidle}set onidle(n){if(this._onidle=n,typeof n=="function"&&this._isIdle){const e={data:{type:"pool:idle",stats:this.getStats()}};try{n(e)}catch(t){console.error("Pool onidle handler error",t)}}}}class _{constructor({maxEntries:n=1/0,maxWeight:e=1/0,weightFn:t=()=>1,defaultTTL:r=6e4,maxPoolSize:s=1e3,rejectOversized:l=!1,onEvict:c=null,onExpire:f=null,initialPoolSize:u=0,maxCleanupPerTick:i=100}={}){this.maxEntries=n,this.maxWeight=e,this.weightFn=t,this.defaultTTL=r,this.maxPoolSize=s,this.rejectOversized=!!l,this.onEvict=typeof c=="function"?c:null,this.onExpire=typeof f=="function"?f:null,this.maxCleanupPerTick=Number.isFinite(+i)?Math.max(1,+i):100,this.map=new Map,this.head=null,this.tail=null,this.pool=[];for(let o=0;o<Math.min(u||0,this.maxPoolSize);o++)this.pool.push({key:null,value:null,weight:0,expiresAt:0,prev:null,next:null});this.currentWeight=0,this.hits=0,this.misses=0,this.evictions=0,this.rejected=0,this._cleanupTimer=null,this._cleanupRunning=!1,this._cleanupParams=null,this._cleanupCursor=null}_allocNode(n,e,t,r){const s=this.pool.pop()||{key:null,value:null,weight:0,expiresAt:0,prev:null,next:null};return s.key=n,s.value=e,s.weight=t||0,s.expiresAt=r||0,s.prev=null,s.next=null,s}_freeNode(n){n.key=null,n.value=null,n.weight=0,n.expiresAt=0,n.prev=null,n.next=null,this.pool.length<this.maxPoolSize&&this.pool.push(n)}_append(n){if(!this.tail){this.head=this.tail=n;return}n.prev=this.tail,n.next=null,this.tail.next=n,this.tail=n}_remove(n){const e=n.prev,t=n.next;e?e.next=t:this.head=t,t?t.prev=e:this.tail=e,n.prev=n.next=null}_moveToTail(n){this.tail!==n&&(this._remove(n),this._append(n))}_popHead(){const n=this.head;return n?(this._remove(n),n):null}_evictIfNeeded(){for(;this.map.size>this.maxEntries||this.currentWeight>this.maxWeight;){const n=this.head;if(!n)break;const e=n.next,t=n.key,r=n.value;this._cleanupCursor===n&&(this._cleanupCursor=e||this.head),this._remove(n),this.map.delete(t),this.currentWeight-=n.weight||0,this.evictions++;try{this.onEvict&&this.onEvict(t,r,"evicted")}catch{}this._freeNode(n)}}set(n,e,{ttl:t=this.defaultTTL,weight:r=null}={}){const s=Date.now(),l=t==null||t===1/0?0:s+t,c=r??(this.weightFn(e)||0),f=Number.isFinite(+c)?Math.max(0,+c):0;if(this.rejectOversized&&Number.isFinite(this.maxWeight)&&f>this.maxWeight){this.rejected++;try{this.onEvict&&this.onEvict(n,e,"rejected-oversized")}catch{}return this.rejectOversized?!1:this}if(this.map.has(n)){const u=this.map.get(n);this.currentWeight-=u.weight||0,u.value=e,u.weight=f,u.expiresAt=l,this.currentWeight+=u.weight||0,this._moveToTail(u)}else{const u=this._allocNode(n,e,f,l);this.map.set(n,u),this._append(u),this.currentWeight+=u.weight||0,this._evictIfNeeded()}return this}get(n){const e=this.map.get(n),t=Date.now();if(!e){this.misses++;return}if(e.expiresAt&&e.expiresAt<=t){const r=e.key,s=e.value,l=e.next;this.map.delete(r),this.currentWeight-=e.weight||0,this._cleanupCursor===e&&(this._cleanupCursor=l||this.head),this._remove(e);try{this.onExpire&&this.onExpire(r,s)}catch{}this._freeNode(e),this.misses++;return}return this._moveToTail(e),this.hits++,e.value}peek(n){const e=this.map.get(n);if(e&&!(e.expiresAt&&e.expiresAt<=Date.now()))return e.value}has(n,{ignoreExpiry:e=!1}={}){const t=this.map.get(n);return!(!t||!e&&t.expiresAt&&t.expiresAt<=Date.now())}hasEqual(n,e,{ignoreExpiry:t=!1}={}){const r=this.map.get(n);if(!r||!t&&r.expiresAt&&r.expiresAt<=Date.now())return!1;const s=r.value;if(s===e)return!0;if(typeof s!=="object"||s===null||typeof e!=="object"||e===null)return s===e;const f=new WeakMap,u=(i,o)=>{if(i===o)return!0;if(i==null||o==null||typeof i!=="object"||typeof o!=="object")return i===o;const m=f.get(i);if(m&&m.has(o))return!0;if(m||f.set(i,new WeakSet),f.get(i).add(o),Object.getPrototypeOf(i)!==Object.getPrototypeOf(o))return!1;if(typeof Uint8Array<"u"&&i instanceof Uint8Array){if(!(o instanceof Uint8Array)||i.length!==o.length)return!1;for(let h=0;h<i.length;h++)if(i[h]!==o[h])return!1;return!0}if(Array.isArray(i)){if(!Array.isArray(o)||i.length!==o.length)return!1;for(let h=0;h<i.length;h++)if(!u(i[h],o[h]))return!1;return!0}if(ArrayBuffer.isView(i)){if(!ArrayBuffer.isView(o)||i.byteLength!==o.byteLength)return!1;const h=new Uint8Array(i.buffer,i.byteOffset||0,i.byteLength),p=new Uint8Array(o.buffer,o.byteOffset||0,o.byteLength);for(let d=0;d<h.length;d++)if(h[d]!==p[d])return!1;return!0}if(i instanceof ArrayBuffer){if(!(o instanceof ArrayBuffer)||i.byteLength!==o.byteLength)return!1;const h=new Uint8Array(i),p=new Uint8Array(o);for(let d=0;d<h.length;d++)if(h[d]!==p[d])return!1;return!0}if(i instanceof Date)return o instanceof Date?i.getTime()===o.getTime():!1;if(i instanceof RegExp)return o instanceof RegExp?i.toString()===o.toString():!1;if(i instanceof Map){if(!(o instanceof Map)||i.size!==o.size)return!1;for(const[h,p]of i)if(!o.has(h)||!u(p,o.get(h)))return!1;return!0}if(i instanceof Set){if(!(o instanceof Set)||i.size!==o.size)return!1;let h=!0;for(const p of i)if(p!==null&&typeof p=="object"){h=!1;break}if(h){for(const p of i)if(!o.has(p))return!1;return!0}for(const p of i){let d=!1;for(const I of o)if(u(p,I)){d=!0;break}if(!d)return!1}return!0}const w=Object.keys(i),g=Object.keys(o);if(w.length!==g.length)return!1;for(let h=0;h<w.length;h++){const p=w[h];if(!Object.prototype.hasOwnProperty.call(o,p)||!u(i[p],o[p]))return!1}return!0};return u(s,e)}delete(n){const e=this.map.get(n);if(!e)return!1;const t=e.next;this.map.delete(n),this.currentWeight-=e.weight||0,this._cleanupCursor===e&&(this._cleanupCursor=t||this.head),this._remove(e);try{this.onEvict&&this.onEvict(e.key,e.value,"deleted")}catch{}return this._freeNode(e),!0}clear(){for(let n=this.head;n;){const e=n.next;this.pool.length<this.maxPoolSize&&this.pool.push(n),n=e}this.head=this.tail=null,this.map.clear(),this.currentWeight=0,this._cleanupCursor=null}cleanupExpired(){return this.cleanupExpiredUpTo()}cleanupExpiredUpTo(n=1/0){const e=Date.now();let t=0,r=this._cleanupCursor&&this.map.get(this._cleanupCursor.key)===this._cleanupCursor?this._cleanupCursor:this.head;for(;r&&t<n;){const s=r.next;if(r.expiresAt&&r.expiresAt<=e){const l=r.key,c=r.value;this.map.delete(l),this.currentWeight-=r.weight||0,this._cleanupCursor===r&&(this._cleanupCursor=s||this.head),this._remove(r);try{this.onExpire&&this.onExpire(l,c)}catch{}this._freeNode(r),this.evictions++}r=s,t++}return this._cleanupCursor=r||this.head,t}startCleanup(n={}){let e,t;typeof n=="number"?(e=n,t=this.maxCleanupPerTick):(e=Number.isFinite(+n.interval)?+n.interval:Math.max(1e3,Math.min(this.defaultTTL||6e4,6e4)),t=Number.isFinite(+n.maxCleanupPerTick)?Math.max(1,+n.maxCleanupPerTick):this.maxCleanupPerTick),this.stopCleanup(),this._cleanupParams={interval:e,maxCleanupPerTick:t};const r=()=>{if(this._cleanupTimer!=null){if(this._cleanupRunning){this._cleanupTimer=setTimeout(r,this._cleanupParams.interval);return}this._cleanupRunning=!0;try{this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick)}finally{this._cleanupRunning=!1}this._cleanupTimer=setTimeout(r,this._cleanupParams.interval)}};this._cleanupTimer=setTimeout(r,e)}stopCleanup(){this._cleanupTimer&&(clearTimeout(this._cleanupTimer),this._cleanupTimer=null),this._cleanupRunning=!1,this._cleanupParams=null}get size(){return this.map.size}stats(){return{size:this.size,weight:this.currentWeight,hits:this.hits,misses:this.misses,evictions:this.evictions,rejected:this.rejected,poolSize:this.pool.length}}resize({maxEntries:n,maxWeight:e}={}){Number.isFinite(+n)&&(this.maxEntries=Math.max(0,+n)),Number.isFinite(+e)&&(this.maxWeight=Math.max(0,+e)),this._evictIfNeeded()}*entries(n="MRU"){if(n==="MRU")for(let e=this.tail;e;e=e.prev)yield[e.key,e.value];else for(let e=this.head;e;e=e.next)yield[e.key,e.value]}*keys(n="MRU"){for(const[e]of this.entries(n))yield e}*values(n="MRU"){for(const[,e]of this.entries(n))yield e}}const B=typeof TextEncoder<"u",C=typeof TextDecoder<"u",T=B?new TextEncoder:null,k=C?new TextDecoder:null,U=a=>{if(a instanceof Uint8Array)return a;if(ArrayBuffer.isView(a))return new Uint8Array(a.buffer,a.byteOffset,a.byteLength);if(a instanceof ArrayBuffer)return new Uint8Array(a);const n=JSON.stringify(a);if(T)return T.encode(n);if(typeof Buffer<"u"&&typeof Buffer.from=="function")return new Uint8Array(Buffer.from(n));throw new Error("No TextEncoder available to encode object")},z=a=>{let n;if(a instanceof Uint8Array)n=a;else if(ArrayBuffer.isView(a))n=new Uint8Array(a.buffer,a.byteOffset,a.byteLength);else if(a instanceof ArrayBuffer)n=new Uint8Array(a);else if(typeof Buffer<"u"&&typeof Buffer.isBuffer=="function"&&Buffer.isBuffer(a))n=new Uint8Array(a);else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");return k?JSON.parse(k.decode(n)):typeof Buffer<"u"&&typeof Buffer.from=="function"?JSON.parse(Buffer.from(n).toString("utf8")):JSON.parse(new TextDecoder().decode(n))},R=a=>{const n=U(a);return n.byteOffset===0&&n.byteLength===n.buffer.byteLength?n.buffer:n.buffer.slice(n.byteOffset,n.byteOffset+n.byteLength)},A=a=>z(a);class O{constructor(n){this.map=n.map,this.source=n.source instanceof maplibregl.VectorTileSource?n.source:this.map.getSource(n.source),this.sourceLayer=n.sourceLayer,this.fid=n.fid||"id",this.tiles=this.source.tiles.map(l=>l.split("{z}")[0]),this.tileSize=this.source.tileSize||512,this.tolerance=n.tolerance||1e-5,this.cacheSize=n.cacheSize||5e3,this.units=n.units||"meters",this.seed=!1,this.map.addSource(this.source.id+"-proper",{type:"geojson",maxzoom:this.source.maxzoom,promoteId:"_index",data:{}}),this.gjSource=this.map.getSource(this.source.id+"-proper");const e=new S(M,{size:6}),t=new S(N,{size:4}),r=new _({maxEntries:this.cacheSize,maxWeight:this.cacheSize*5e3,weight:l=>l.size||0});e.onmessage=l=>{if(l.data instanceof ArrayBuffer){const c=l.data,f=A(c);if(f.type==="simplified"&&f.size>0){const{unique:u,type:i,...o}=f;r.set(u,o)}}};const s=new _({maxEntries:this.cacheSize,maxWeight:this.cacheSize*5e3,weight:l=>l.features.length||0});return t.onmessage=l=>{if(l.data instanceof ArrayBuffer){const c=l.data,f=A(c),{id:u,features:i}=f,o={};if(s.has(u)&&!s.hasEqual(u,i)){const y=s.get(u),x=[...new Set(y.map(m=>m.properties._index))];o.remove=x,o.add=i,s.set(u,i)}else s.set(u,i),o.add=i;(o.add.length>0||o.remove.length>0)&&this.gjSource.updateData(o)}},this.map.on("sourcedata",l=>{if(l.sourceId===this.source.id){const{z:c,x:f,y:u}=l.tile.tileID.canonical,i=`${c}|${f}|${u}`;if(!r.has(i)){const o=this.tolerance*Math.pow(10,-.301*c+5.19),y=[],x=this.source.type==="vector"?{sourceLayer:this.sourceLayer}:{};l.tile.querySourceFeatures(y,x);const m={collection:{type:"FeatureCollection",features:y.map((g,h)=>({id:g.properties[this.fid]||g.id,geometry:g.geometry,properties:{...g.properties,_index:`${i}|${h}`,_tile:i,_group:g.properties[this.fid]}}))},tolerance:o,unique:i,tileSize:this.tileSize},w=R(m);e.postMessage(w)}l.isSourceLoaded&&e.addEventListener("idle",o=>{const y=Object.fromEntries(r.entries());Object.values(y).map(g=>g[68]).filter(g=>!!g).reduce((g,h)=>[...g,...h.features],[]);const m={pieces:y,tolerance:this.tolerance,unit:this.units,tileSize:this.tileSize},w=R(m);t.postMessage(w)})}}),this.map.refreshTiles(this.source.id),this.gjSource}}maplibregl.VectorTileSource.prototype.ProperLabels=function(a){const n=Object.assign({},a,{map:this._map,source:this});return this._proper||(this._proper=new O(n)),this._proper};module.exports=O;
