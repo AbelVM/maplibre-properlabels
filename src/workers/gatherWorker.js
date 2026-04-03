@@ -1,59 +1,9 @@
 import { union } from "@turf/union";
 import { flatten } from "@turf/flatten";
-import polylabel from 'polylabel';
-import { pointOnFeature } from "@turf/point-on-feature";
-import { area } from "@turf/area";
-import { o2b, b2o } from "./utils.js";
+import { o2b, b2o } from "../utils/bufferManager.js";
+import { safePolylabel, polygonArea } from "../utils/geomHelper.js";
 
 const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
-
-const safePolylabel = (feature, precision) => {
-    try {
-        const coords = feature && feature.geometry && feature.geometry.coordinates;
-        let pt = polylabel(coords, precision);
-        if (!Array.isArray(pt) || !Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) {
-            pt = pointOnFeature(feature).geometry.coordinates;
-        }
-        return {
-            type: 'Point',
-            coordinates: [pt[0], pt[1]]
-        }
-    } catch (err) {
-        console.log('Invalid feature geometry', feature && feature.id)
-        return pointOnFeature(feature).geometry;
-    }
-}
-
-const shoeLace = points => {
-    if (!points) return 0;
-    let a = 0;
-    for (let i = 0; i < points.length; i++) {
-        const j = (i + 1) % points.length;
-        a += points[i][0] * points[j][1];
-        a -= points[j][0] * points[i][1];
-    }
-    return Math.abs(a) / 2;
-}
-
-const polygonArea = (feature, units) => {
-    try {
-        if (units === 'meters') {
-            return area(feature);
-        } else {
-            const geometry = feature && feature.geometry;
-            if (!geometry || geometry.type !== 'Polygon') return 0;
-            const coordinates = geometry && geometry.coordinates
-            let area = shoeLace(coordinates[0]);
-            for (let i = 1; i < coordinates.length; i++) {
-                area -= shoeLace(coordinates[i]);
-            }
-            return area;
-        }
-    } catch (err) {
-        console.log('Error computing area for feature', feature && feature.id, err);
-        return 0;
-    }
-}
 
 _root.onmessage = e => {
     const buffer = e.data;
@@ -61,9 +11,6 @@ _root.onmessage = e => {
     const pieces = Object.values(incoming.pieces);
     const tolerance = incoming.tolerance || 0.00001;
     const units = incoming.unit || 'meters';
-    const mutate = true;
-
-
 
     const groupedMap = new Map();
     pieces.forEach(f => {
@@ -75,6 +22,8 @@ _root.onmessage = e => {
     });
 
     for (const [id, group] of groupedMap.entries()) {
+
+        if (id === 'size') continue;
 
         let collection = {
             type: 'FeatureCollection',
@@ -141,6 +90,8 @@ _root.onmessage = e => {
             return f;
         });
 
-        console.log(collection);
+       collection.id = id;
+       _root.postMessage(o2b(collection));
+
     }
 };

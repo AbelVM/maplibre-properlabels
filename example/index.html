@@ -175,9 +175,9 @@
 
         <ul>
             <li><span class="label-sw black" aria-hidden="true">Label</span> <label><input type="radio" name="label"
-                        id="black" value="black_checkbox" checked />MapLibre labels for polygons </label></li>
+                        id="black" value="black_checkbox" />MapLibre labels for polygons </label></li>
             <li><span class="label-sw red" aria-hidden="true">Label</span> <label><input type="radio" name="label"
-                        id="red" value="red_checkbox" />The proper labels</label></li>
+                        id="red" value="red_checkbox" checked />The proper labels</label></li>
             <li><span class="swatch blue" aria-hidden="true"></span> Not clipped countries</li>
             <li><span class="swatch green" aria-hidden="true"></span> Clipped countries</li>
             <li><span class="line-sw" aria-hidden="true"></span> <label><input type="checkbox" id="tiles"
@@ -220,7 +220,8 @@
                         layout: {
                             'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
                             'text-size': 12,
-                            "text-font": ["Montserrat"]
+                            "text-font": ["Montserrat"],
+                            'visibility': 'none'
                         },
                         paint: {
                             'text-color': '#000000',
@@ -251,7 +252,6 @@
                     'text-field': ['coalesce', ['get', 'name'], ['get', 'name_en'], ['get', 'NAME'], ''],
                     'text-size': 12,
                     "text-font": ["Montserrat"],
-                    'visibility': 'none',
                     'symbol-sort-key': ['get', '_localSortKey']
                 },
                 paint: {
