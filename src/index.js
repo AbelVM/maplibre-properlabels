@@ -2,7 +2,7 @@ import TileWorker from './workers/tileWorker.js?worker&inline';
 import GatherWorker from './workers/gatherWorker.js?worker&inline';
 import PoolManager from './utils/poolManager.js';
 import CacheManager from './utils/cacheManager.js';
-import { o2b, b2o } from './utils/bufferManager.js';
+import { o2u8, u82o } from './utils/bufferManager.js';
 
 
 export default class ProperLabels {
@@ -37,10 +37,9 @@ export default class ProperLabels {
         tilePool.onmessage = e => {
             if (e.data instanceof ArrayBuffer) {
                 const buffer = e.data;
-                const incoming = b2o(buffer);
+                const incoming = u82o(buffer);
                 if (incoming.type === 'simplified' && incoming.size > 0) {
                     const { unique, type, ...payload } = incoming;
-                    //if (payload[68]) console.log(payload[68].features.map(f => f.properties._index));
                     piecesBucket.set(unique, payload);
                 }
             }
@@ -51,27 +50,47 @@ export default class ProperLabels {
             maxWeight: this.cacheSize * 5000,
             weight: entry => entry.features.length || 0
         });
+
+        const diff = { add: new Map(), remove: new Set() };
+        const applyDiff = () => {
+            if (diff.add.size === 0 && diff.remove.size === 0) {
+                console.log('No changes to apply, skipping update');
+                if (this.scheduler) {
+                    clearInterval(this.scheduler);
+                    this.scheduler = null;
+                }
+                return;
+            }
+            console.log(`Applying diff with ${diff.add.size} additions and ${diff.remove.size} removals`);
+            const toAdd = [...diff.add.values()];
+            const toRemove = [...diff.remove];
+            this.gjSource.updateData({ add: toAdd, remove: toRemove });
+            diff.add.clear();
+            diff.remove.clear();
+        };
+
+
         gatherPool.onmessage = e => {
             if (e.data instanceof ArrayBuffer) {
                 const buffer = e.data;
-                const incoming = b2o(buffer);
+                const incoming = u82o(buffer);
                 const { id, features } = incoming;
-                const diff = {};
                 if (labelsBucket.has(id) && !labelsBucket.hasEqual(id, features)) {
                     const existing = labelsBucket.get(id);
                     const existingIds = [...new Set(existing.map(f => f.properties._index))];
-                    diff.remove = existingIds;
-                    diff.add = features;
+                    existingIds.forEach(id => diff.remove.add(id));
+                    features.forEach(f => diff.add.set(f.properties._index, f));
                     labelsBucket.set(id, features);
                 } else {
+                    features.forEach(f => diff.add.set(f.properties._index, f));
                     labelsBucket.set(id, features);
-                    diff.add = features;
                 }
-                if (diff.add.length > 0 || diff.remove.length > 0) {
-                    this.gjSource.updateData(diff);
-                }
+            } else {
+
             }
         };
+        gatherPool.addEventListener('idle', applyDiff);
+
 
         this.map.on('sourcedata', (e) => {
             if (e.sourceId === this.source.id) {
@@ -93,22 +112,27 @@ export default class ProperLabels {
                             features: tileFeatures.map((f, i) => ({
                                 id: f.properties[this.fid] || f.id,
                                 geometry: f.geometry,
-                                properties: { ...f.properties, _index: `${unique}|${i}`, _tile: unique, _group: f.properties[this.fid] }
+                                properties: {
+                                    ...f.properties,
+                                    _index: `${unique}|${i}`,
+                                    _tile: unique,
+                                    _group: f.properties[this.fid]
+                                }
                             }))
                         },
                         tolerance: t,
                         unique: unique,
                         tileSize: this.tileSize
                     };
-                    const buffer = o2b(payload);
-                    tilePool.postMessage(buffer);
+                    const buffer = o2u8(payload).buffer;
+                    tilePool.postMessage(buffer, [buffer]);
                 }
                 if (e.isSourceLoaded) {
                     tilePool.addEventListener('idle', e => {
                         const pieces = Object.fromEntries(piecesBucket.entries());
                         const payload = { pieces, tolerance: this.tolerance, unit: this.units, tileSize: this.tileSize };
-                        const buffer = o2b(payload);
-                        gatherPool.postMessage(buffer);
+                        const buffer = o2u8(payload).buffer;
+                        gatherPool.postMessage(buffer, [buffer]);
                     });
                 }
             }

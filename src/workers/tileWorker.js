@@ -1,12 +1,12 @@
 import { flatten } from "@turf/flatten";
-import { o2b, b2o } from "../utils/bufferManager.js";
+import { o2u8, u82o } from "../utils/bufferManager.js";
 import { strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
 
 const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
 
 _root.onmessage = e => {
-    const buffer = e.data;
-    const incoming = b2o(buffer);
+    const buffer_input = e.data;
+    const incoming = u82o(buffer_input);
     const tolerance = incoming.tolerance;
     const unique = incoming.unique;
     const tileSize = incoming.tileSize;
@@ -40,7 +40,7 @@ _root.onmessage = e => {
 
     const op = Object.fromEntries(outputMap);
     const payload = Object.assign({}, op, { unique, type: 'simplified', size });
-
-    _root.postMessage(o2b(payload));
+    const buffer = o2u8(payload).buffer;
+    _root.postMessage(buffer, [buffer]);
 
 };

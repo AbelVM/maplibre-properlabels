@@ -383,11 +383,16 @@ export default class PoolManager {
   addEventListener(type, cb) {
     if (!(type in this._listeners)) return;
     this._listeners[type].add(cb);
-    // If registering an 'idle' listener while the pool is already idle,
-    // invoke it immediately with the same event shape produced on transitions.
-    if (type === 'idle' && this._isIdle) {
-      const ev = { data: { type: 'pool:idle', stats: this.getStats() } };
-      try { cb(ev); } catch (err) { console.error('pool idle listener error', err); }
+    // If registering an 'idle' listener while the pool is actually idle,
+    // invoke it immediately. Use the same logic as `_updateIdleState`.
+    if (type === 'idle') {
+      const hasWorkers = this.workers.length > 0;
+      const allWorkersIdle = hasWorkers && this.workers.every(w => w.tasks === 0);
+      const queueEmpty = this.queue.length === 0;
+      if (allWorkersIdle && queueEmpty) {
+        const ev = { data: { type: 'pool:idle', stats: this.getStats() } };
+        try { cb(ev); } catch (err) { console.error('pool idle listener error', err); }
+      }
     }
   }
 
@@ -421,9 +426,14 @@ export default class PoolManager {
   get onidle() { return this._onidle; }
   set onidle(cb) {
     this._onidle = cb;
-    if (typeof cb === 'function' && this._isIdle) {
-      const ev = { data: { type: 'pool:idle', stats: this.getStats() } };
-      try { cb(ev); } catch (err) { console.error('Pool onidle handler error', err); }
+    if (typeof cb === 'function') {
+      const hasWorkers = this.workers.length > 0;
+      const allWorkersIdle = hasWorkers && this.workers.every(w => w.tasks === 0);
+      const queueEmpty = this.queue.length === 0;
+      if (allWorkersIdle && queueEmpty) {
+        const ev = { data: { type: 'pool:idle', stats: this.getStats() } };
+        try { cb(ev); } catch (err) { console.error('Pool onidle handler error', err); }
+      }
     }
   }
 }

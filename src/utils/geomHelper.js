@@ -1,6 +1,12 @@
 import polylabel from 'polylabel';
 import { area } from "@turf/area";
 
+// Caches to memoize results for feature objects.
+// WeakMap keys are feature objects and values are Maps keyed by parameter string.
+const polylabelCache = new WeakMap();
+const polygonAreaCache = new WeakMap();
+const countGeoJSONCache = new WeakMap();
+
 /**
  * Utilities for working with GeoJSON polygon geometries used by the worker.
  *
@@ -31,11 +37,6 @@ export const strictOuterCheck = (coordinates, tile, tileSize) => {
     const scale = Math.pow(2, z) * tileSize;
     const MAX_LAT = 85.05112878;
     const eps = 1;
-
-    if (!coordinates[0]?.some) {
-        debugger;
-    }
-
     const isOuter = coordinates[0].some(p => {
         const lat = Math.max(Math.min(p[1], MAX_LAT), -MAX_LAT);
         const sinLat = Math.sin(lat * Math.PI / 180);
@@ -68,15 +69,33 @@ export const safePolylabel = (feature, precision) => {
         if (feature.geometry.type !== 'Polygon') {
             throw new Error('Non-Polygon geometry');
         }
+
+        // Try returning cached result for the same feature+precision
+        if (feature && typeof feature === 'object') {
+            let fCache = polylabelCache.get(feature);
+            const key = precision === undefined ? '__default' : String(precision);
+            if (fCache && fCache.has(key)) {
+                return fCache.get(key);
+            }
+        }
+
         const coords = feature && feature.geometry && feature.geometry.coordinates;
         let pt = polylabel(coords, precision);
         if (!Array.isArray(pt) || !Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) {
             throw new Error('Invalid polylabel result');
         }
-        return {
+        const result = {
             type: 'Point',
             coordinates: [pt[0], pt[1]]
+        };
+
+        if (feature && typeof feature === 'object') {
+            let fCache = polylabelCache.get(feature);
+            if (!fCache) { fCache = new Map(); polylabelCache.set(feature, fCache); }
+            fCache.set(precision === undefined ? '__default' : String(precision), result);
         }
+
+        return result;
     } catch (err) {
         console.log('Invalid feature geometry', feature && feature.id)
         return pointOnFeature(feature).geometry;
@@ -113,17 +132,48 @@ const shoeLace = points => {
  */
 export const polygonArea = (feature, units) => {
     try {
-        if (units === 'meters') {
-            return area(feature);
-        } else {
-            const geometry = feature && feature.geometry;
-            if (!geometry || geometry.type !== 'Polygon') return 0;
-            const coordinates = geometry && geometry.coordinates
-            let area = shoeLace(coordinates[0]);
-            for (let i = 1; i < coordinates.length; i++) {
-                area -= shoeLace(coordinates[i]);
+        // Memoize results per-feature using a WeakMap to avoid memory leaks.
+        if (feature && typeof feature === 'object') {
+            let fCache = polygonAreaCache.get(feature);
+            const key = units === 'meters' ? 'meters' : (units || '__planar');
+            if (fCache && fCache.has(key)) {
+                return fCache.get(key);
             }
-            return area;
+
+            let value;
+            if (units === 'meters') {
+                value = area(feature);
+            } else {
+                const geometry = feature && feature.geometry;
+                if (!geometry || geometry.type !== 'Polygon') {
+                    value = 0;
+                } else {
+                    const coordinates = geometry && geometry.coordinates;
+                    let a = shoeLace(coordinates[0]);
+                    for (let i = 1; i < coordinates.length; i++) {
+                        a -= shoeLace(coordinates[i]);
+                    }
+                    value = a;
+                }
+            }
+
+            if (!fCache) { fCache = new Map(); polygonAreaCache.set(feature, fCache); }
+            fCache.set(key, value);
+            return value;
+        } else {
+            // Non-object feature: fall back to previous behavior (no caching).
+            if (units === 'meters') {
+                return area(feature);
+            } else {
+                const geometry = feature && feature.geometry;
+                if (!geometry || geometry.type !== 'Polygon') return 0;
+                const coordinates = geometry && geometry.coordinates
+                let a = shoeLace(coordinates[0]);
+                for (let i = 1; i < coordinates.length; i++) {
+                    a -= shoeLace(coordinates[i]);
+                }
+                return a;
+            }
         }
     } catch (err) {
         console.log('Error computing area for feature', feature && feature.id, err);
@@ -139,6 +189,15 @@ export const polygonArea = (feature, units) => {
  */
 export function countGeoJSONPoints(obj, opts = {}) {
     const { unique = false } = opts;
+    // Try cache lookup for object + opts flag
+    if (obj && typeof obj === 'object') {
+        let fCache = countGeoJSONCache.get(obj);
+        const key = unique ? 'unique' : '__count';
+        if (fCache && fCache.has(key)) {
+            return fCache.get(key);
+        }
+    }
+
     const seen = unique ? new Set() : null;
     let count = 0;
 
@@ -171,5 +230,12 @@ export function countGeoJSONPoints(obj, opts = {}) {
     }
 
     walk(obj);
-    return unique ? seen.size : count;
+    const result = unique ? seen.size : count;
+    if (obj && typeof obj === 'object') {
+        let fCache = countGeoJSONCache.get(obj);
+        const key = unique ? 'unique' : '__count';
+        if (!fCache) { fCache = new Map(); countGeoJSONCache.set(obj, fCache); }
+        fCache.set(key, result);
+    }
+    return result;
 }
