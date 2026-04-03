@@ -106,11 +106,6 @@ export default class ProperLabels {
                 if (e.isSourceLoaded) {
                     tilePool.addEventListener('idle', e => {
                         const pieces = Object.fromEntries(piecesBucket.entries());
-
-                        const a = Object.values(pieces).map(f => f[68]).filter(f => !!f);
-                        const c = { type: 'FeatureCollection', features: a.reduce((acc, cur) => [...acc, ...cur.features], []) };
-                        // console.log(c);
-
                         const payload = { pieces, tolerance: this.tolerance, unit: this.units, tileSize: this.tileSize };
                         const buffer = o2b(payload);
                         gatherPool.postMessage(buffer);
