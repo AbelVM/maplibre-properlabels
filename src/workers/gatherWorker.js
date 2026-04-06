@@ -1,9 +1,6 @@
-import { union } from "@turf/union";
-import { flatten } from "@turf/flatten";
-import { simplify } from "@turf/simplify";
-import { o2u8, u82o } from "../utils/bufferManager.js";
+import { union , flatten ,simplify } from "../utils/geomHelper.js";
+import { o2u8, u82o } from "../../externals/performance-helpers.es.js";
 import { safePolylabel, polygonArea } from "../utils/geomHelper.js";
-import { strictOuterCheck, countGeoJSONPoints } from "../utils/geomHelper.js";
 
 const _root = (typeof self !== 'undefined') ? self : ((typeof globalThis !== 'undefined') ? globalThis : {});
 

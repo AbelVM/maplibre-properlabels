@@ -1,9 +1,7 @@
 import TileWorker from './workers/tileWorker.js?worker&inline';
 import GatherWorker from './workers/gatherWorker.js?worker&inline';
-import PoolManager from './utils/poolManager.js';
-import CacheManager from './utils/cacheManager.js';
-import { o2u8, u82o } from './utils/bufferManager.js';
-
+import PowerTileManager from './managers/PowerTileManager.js';
+import { deepEqual } from './utils/misc.js';
 
 export default class ProperLabels {
 
@@ -18,6 +16,7 @@ export default class ProperLabels {
         this.cacheSize = options.cacheSize || 5000;
         this.units = options.units || 'meters';
         this.seed = false;
+
         this.map.addSource(this.source.id + '-proper', {
             type: 'geojson',
             maxzoom: this.source.maxzoom,
@@ -26,39 +25,56 @@ export default class ProperLabels {
         });
         this.gjSource = this.map.getSource(this.source.id + '-proper');
 
-        const tilePool = new PoolManager(TileWorker, { size: 6 });
-        const gatherPool = new PoolManager(GatherWorker, { size: 4 });
 
-        const piecesBucket = new CacheManager({
-            maxEntries: this.cacheSize,
-            maxWeight: this.cacheSize * 5000,
-            weight: entry => entry.size || 0
-        });
-        tilePool.onmessage = e => {
-            if (e.data instanceof ArrayBuffer) {
-                const buffer = e.data;
-                const incoming = u82o(buffer);
-                if (incoming.type === 'simplified' && incoming.size > 0) {
-                    const { unique, type, ...payload } = incoming;
-                    piecesBucket.set(unique, payload);
-                }
-            }
-        };
-
-        const labelsBucket = new CacheManager({
-            maxEntries: this.cacheSize,
-            maxWeight: this.cacheSize * 5000,
-            weight: entry => entry.features.length || 0
+        const tileManager = new PowerTileManager({
+            tileWorkerSource: TileWorker,
+            gatherWorkerSource: GatherWorker,
+            tilePoolOptions: {
+                size: 6,
+                minSize: 2,
+                maxSize: 6,
+                idleTimeout: 30000,
+                taskQueue: true,
+                queuePolicy: 'enqueue',
+            },
+            gatherPoolOptions: {
+                size: 4,
+                minSize: 2,
+                maxSize: 4,
+                idleTimeout: 30000,
+                taskQueue: true,
+            },
+            tileCacheOptions: {
+                maxEntries: this.cacheSize,
+                defaultTTL: 60000,
+            },
+            gatherCacheOptions: {
+                maxEntries: this.cacheSize,
+                defaultTTL: 60000,
+            },
+            tileToGather: (tileResult) => {
+                if (!tileResult || tileResult.type !== 'simplified' || !tileResult.unique) return null;
+                const { unique, type, ...payload } = tileResult;
+                return {
+                    pieceKey: unique,
+                    cacheKey: `gather:${unique}`,
+                    message: {
+                        pieces: {
+                            [unique]: payload,
+                        },
+                        tolerance: this.tolerance,
+                        unit: this.units,
+                        tileSize: this.tileSize,
+                    },
+                    awaitResponse: true,
+                };
+            },
         });
 
         const diff = { add: new Map(), remove: new Set() };
         const applyDiff = () => {
             if (diff.add.size === 0 && diff.remove.size === 0) {
                 console.log('No changes to apply, skipping update');
-                if (this.scheduler) {
-                    clearInterval(this.scheduler);
-                    this.scheduler = null;
-                }
                 return;
             }
             console.log(`Applying diff with ${diff.add.size} additions and ${diff.remove.size} removals`);
@@ -69,74 +85,70 @@ export default class ProperLabels {
             diff.remove.clear();
         };
 
+        tileManager.on('gather:result', ({ result }) => {
+            const id = result && result.id;
+            const features = result && result.features;
+            if (!id || !Array.isArray(features)) return;
 
-        gatherPool.onmessage = e => {
-            if (e.data instanceof ArrayBuffer) {
-                const buffer = e.data;
-                const incoming = u82o(buffer);
-                const { id, features } = incoming;
-                if (labelsBucket.has(id) && !labelsBucket.hasEqual(id, features)) {
-                    const existing = labelsBucket.get(id);
-                    const existingIds = [...new Set(existing.map(f => f.properties._index))];
-                    existingIds.forEach(id => diff.remove.add(id));
-                    features.forEach(f => diff.add.set(f.properties._index, f));
-                    labelsBucket.set(id, features);
-                } else {
-                    features.forEach(f => diff.add.set(f.properties._index, f));
-                    labelsBucket.set(id, features);
-                }
-            } else {
+            const cacheKey = `gather:${id}`;
+            const cached = tileManager.gatherCache && tileManager.gatherCache.has(cacheKey)
+                ? tileManager.gatherCache.get(cacheKey)
+                : undefined;
 
+            if (cached && !deepEqual(cached, features)) {
+                const existingIds = [...new Set(cached.map(f => f.properties._index))];
+                existingIds.forEach((uid) => diff.remove.add(uid));
+                features.forEach((f) => diff.add.set(f.properties._index, f));
+                tileManager.gatherCache.set(cacheKey, features);
+            } else if (!cached) {
+                features.forEach((f) => diff.add.set(f.properties._index, f));
+                tileManager.gatherCache.set(cacheKey, features);
             }
-        };
-        gatherPool.addEventListener('idle', applyDiff);
+        });
 
+        tileManager.on('idle', (event) => {
+            if (event && event.path === 'gather') {
+                applyDiff();
+            }
+        });
 
         this.map.on('sourcedata', (e) => {
             if (e.sourceId === this.source.id) {
                 const { z, x, y } = e.tile.tileID.canonical;
                 const unique = `${z}|${x}|${y}`;
-                if (!piecesBucket.has(unique)) {
-                    // Fit tolerance to map scale: https://wiki.openstreetmap.org/wiki/Zoom_levels
-                    // 1 px ~ 1m at zoom 17, and 1m at equator is 0.00001 degrees so we can use 
-                    // that as a reference for scaling the tolerance. The formula is derived from 
-                    // the equation of a line in log-log space, where the x-axis is zoom level and 
-                    // the y-axis is tolerance.
-                    const t = this.tolerance * Math.pow(10, -0.301 * z + 5.19);
-                    const tileFeatures = [];
-                    const tileOptions = (this.source.type === 'vector') ? { sourceLayer: this.sourceLayer } : {};
-                    e.tile.querySourceFeatures(tileFeatures, tileOptions);
-                    const payload = {
-                        collection: {
-                            type: 'FeatureCollection',
-                            features: tileFeatures.map((f, i) => ({
-                                id: f.properties[this.fid] || f.id,
-                                geometry: f.geometry,
-                                properties: {
-                                    ...f.properties,
-                                    _index: `${unique}|${i}`,
-                                    _tile: unique,
-                                    _group: f.properties[this.fid]
-                                }
-                            }))
-                        },
-                        tolerance: t,
-                        unique: unique,
-                        tileSize: this.tileSize
-                    };
-                    const buffer = o2u8(payload).buffer;
-                    tilePool.postMessage(buffer, [buffer]);
-                }
-                if (e.isSourceLoaded) {
-                    tilePool.addEventListener('idle', e => {
-                        const pieces = Object.fromEntries(piecesBucket.entries());
-                        const payload = { pieces, tolerance: this.tolerance, unit: this.units, tileSize: this.tileSize };
-                        const buffer = o2u8(payload).buffer;
-                        gatherPool.postMessage(buffer, [buffer]);
-                    });
-                }
+                const t = this.tolerance * Math.pow(10, -0.301 * z + 5.19);
+                const tileFeatures = [];
+                const tileOptions = (this.source.type === 'vector') ? { sourceLayer: this.sourceLayer } : {};
+                e.tile.querySourceFeatures(tileFeatures, tileOptions);
+                const payload = {
+                    collection: {
+                        type: 'FeatureCollection',
+                        features: tileFeatures.map((f, i) => ({
+                            id: f.properties[this.fid] || f.id,
+                            geometry: f.geometry,
+                            properties: {
+                                ...f.properties,
+                                _index: `${unique}|${i}`,
+                                _tile: unique,
+                                _group: f.properties[this.fid]
+                            }
+                        }))
+                    },
+                    tolerance: t,
+                    unique,
+                    tileSize: this.tileSize
+                };
+
+                tileManager.processTile(unique, payload, {
+                    cacheKey: unique,
+                    awaitResponse: true,
+                    timeout: 15000,
+                }).catch((err) => {
+                    console.error('PowerTileManager tile processing failed', err);
+                });
             }
         });
+
         this.map.refreshTiles(this.source.id);
         return this.gjSource;
     }

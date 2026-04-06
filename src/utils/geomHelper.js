@@ -1,3 +1,7 @@
+export { union } from "@turf/union";
+export { flatten } from "@turf/flatten";
+export { simplify } from "@turf/simplify";
+
 import polylabel from 'polylabel';
 import { area } from "@turf/area";
 
