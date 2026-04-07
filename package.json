@@ -45,7 +45,8 @@
     "@turf/flatten": "^7.3.4",
     "@turf/simplify": "^7.3.4",
     "@turf/union": "^7.3.4",
-    "polylabel": "^2.0.1"
+    "polylabel": "^2.0.1",
+    "performance-helpers": "file:../performance-helpers"
   },
   "peerDependencies": {
     "maplibre-gl": ">=5.0.0"

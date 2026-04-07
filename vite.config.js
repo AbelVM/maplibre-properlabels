@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 const label = 'maplibre-properlabels';
@@ -12,12 +12,12 @@ export default defineConfig({
       name: 'ProperLabels',
       formats: ['es', 'cjs', 'umd'],
       fileName: (format) => {
-        if (format === 'umd') return `${label}.js`
-        return `${label}.${format}.js`
-      }
+        if (format === 'umd') return `${label}.js`;
+        return `${label}.${format}.js`;
+      },
     },
     assetsInlineLimit: 0,
-/*     minify: 'terser',
+    /*     minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: true,
@@ -27,5 +27,5 @@ export default defineConfig({
         comments: false
       }
     } */
-  }
+  },
 });

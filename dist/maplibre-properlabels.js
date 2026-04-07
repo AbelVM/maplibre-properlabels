@@ -1,82 +1,1063 @@
-(function(w,b){typeof exports=="object"&&typeof module<"u"?module.exports=b():typeof define=="function"&&define.amd?define(b):(w=typeof globalThis<"u"?globalThis:w||self,w.ProperLabels=b())})(this,(function(){"use strict";const w=`var b, m, T = (e) => {
-  if (e instanceof Uint8Array) return e;
-  if (ArrayBuffer.isView(e)) return new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
-  if (e instanceof ArrayBuffer) return new Uint8Array(e);
-  const n = JSON.stringify(e), t = b !== void 0 ? b === !1 ? null : b : typeof TextEncoder < "u" ? b = new TextEncoder() : typeof Buffer < "u" && typeof Buffer.from == "function" ? b = { encode: (o) => new Uint8Array(Buffer.from(o)) } : (b = !1, null);
-  if (t && typeof t.encode == "function") return t.encode(n);
+(function(b,v){typeof exports=="object"&&typeof module<"u"?module.exports=v():typeof define=="function"&&define.amd?define(v):(b=typeof globalThis<"u"?globalThis:b||self,b.ProperLabels=v())})(this,(function(){"use strict";let b,v;function j(){return b!==void 0?b===!1?null:b:typeof TextEncoder<"u"?(b=new TextEncoder,b):typeof Buffer<"u"&&typeof Buffer.from=="function"?(b={encode:h=>new Uint8Array(Buffer.from(h))},b):(b=!1,null)}function B(){return v!==void 0?v===!1?null:v:typeof TextDecoder<"u"?(v=new TextDecoder,v):typeof Buffer<"u"&&typeof Buffer.from=="function"?(v={decode:h=>Buffer.from(h).toString("utf8")},v):(v=!1,null)}const S=h=>{if(h instanceof Uint8Array)return h;if(ArrayBuffer.isView(h))return new Uint8Array(h.buffer,h.byteOffset,h.byteLength);if(h instanceof ArrayBuffer)return new Uint8Array(h);const e=JSON.stringify(h),n=j();if(n&&typeof n.encode=="function")return n.encode(e);throw new Error("No TextEncoder or Buffer available to encode object")},M=h=>{let e;if(h instanceof Uint8Array)e=h;else if(ArrayBuffer.isView(h))e=new Uint8Array(h.buffer,h.byteOffset,h.byteLength);else if(h instanceof ArrayBuffer)e=new Uint8Array(h);else if(typeof Buffer<"u"&&typeof Buffer.isBuffer=="function"&&Buffer.isBuffer(h))e=new Uint8Array(h);else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");const n=B();if(n&&typeof n.decode=="function")return JSON.parse(n.decode(e));if(typeof TextDecoder<"u")return JSON.parse(new TextDecoder().decode(e));throw new Error("No TextDecoder or Buffer available to decode object")};class P{constructor({maxEntries:e=1/0,maxWeight:n=1/0,weightFn:t=()=>1,defaultTTL:r=6e4,maxPoolSize:i=1e3,rejectOversized:o=!1,onEvict:a=null,onExpire:s=null,initialPoolSize:l=0,maxCleanupPerTick:c=100,eagerCleanupOnRead:u=!1}={}){this.maxEntries=e,this.maxWeight=n,this.weightFn=t,this.defaultTTL=r,this.maxPoolSize=i,this.rejectOversized=!!o,this.onEvict=typeof a=="function"?a:null,this.onExpire=typeof s=="function"?s:null,this.maxCleanupPerTick=Number.isFinite(+c)?Math.max(1,+c):100,this.eagerCleanupOnRead=!!u,this.map=new Map,this.head=null,this.tail=null,this.pool=[];for(let f=0;f<Math.min(l||0,this.maxPoolSize);f++)this.pool.push({key:null,value:null,weight:0,expiresAt:0,prev:null,next:null});this.currentWeight=0,this.hits=0,this.misses=0,this.evictions=0,this.rejected=0,this.expirations=0,this._cleanupTimer=null,this._cleanupRunning=!1,this._cleanupParams=null,this._cleanupCursor=null,this._cleanupCursorValid=!1,this._inflightPromises=new Map}_allocNode(e,n,t,r){const i=this.pool.pop()||{key:null,value:null,weight:0,expiresAt:0,prev:null,next:null};return i.key=e,i.value=n,i.weight=t||0,i.expiresAt=r||0,i.prev=null,i.next=null,i}_freeNode(e){e.key=null,e.value=null,e.weight=0,e.expiresAt=0,e.prev=null,e.next=null,this.pool.length<this.maxPoolSize&&this.pool.push(e)}_removeExpiredNode(e,n,t=!1){if(!e||!e.expiresAt||e.expiresAt>n)return!1;const r=e.key,i=e.value,o=e.next;this.map.delete(r),this.currentWeight-=e.weight||0,this._cleanupCursor===e&&(this._cleanupCursor=o),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(e);try{this.onExpire&&this.onExpire(r,i)}catch{}return this._freeNode(e),t&&this.misses++,this.expirations++,!0}_fetchValidNode(e,{ignoreExpiry:n=!1,countMiss:t=!1,allowExpired:r=!1}={}){const i=this.map.get(e);return i?!n&&i.expiresAt&&i.expiresAt<=Date.now()?r?i:(this._removeExpiredNode(i,Date.now(),t),null):i:(t&&this.misses++,null)}_refreshStaleEntry(e,n,{ttl:t=void 0,weight:r=void 0}={}){if(this._inflightPromises.has(e))return;let i;try{i=Promise.resolve().then(()=>n())}catch{return}const o=i.then(a=>{try{this.set(e,a,{ttl:t,weight:r})}catch{}return this._inflightPromises.delete(e),a},a=>{this._inflightPromises.delete(e)});this._inflightPromises.set(e,o)}_append(e){if(!this.tail){this.head=this.tail=e;return}e.prev=this.tail,e.next=null,this.tail.next=e,this.tail=e}_remove(e){const n=e.prev,t=e.next;n?n.next=t:this.head=t,t?t.prev=n:this.tail=n,e.prev=e.next=null}_moveToTail(e){this.tail!==e&&(this._remove(e),this._append(e))}_evictIfNeeded(){for(;this.map.size>this.maxEntries||this.currentWeight>this.maxWeight;){const e=this.head;if(!e)break;const n=e.next,t=e.key,r=e.value;this._cleanupCursor===e&&(this._cleanupCursor=n),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(e),this.map.delete(t),this.currentWeight-=e.weight||0,this.evictions++;try{this.onEvict&&this.onEvict(t,r,"evicted")}catch{}this._freeNode(e)}}set(e,n,{ttl:t=this.defaultTTL,weight:r=null}={}){const i=Date.now(),o=t==null||t===1/0?0:i+t;let a;if(r!=null)a=r;else{try{a=this.weightFn(n)}catch{a=0}a==null&&(a=0)}const s=Number.isFinite(+a)?Math.max(0,+a):0;if(this.rejectOversized&&Number.isFinite(this.maxWeight)&&s>this.maxWeight){this.rejected++;try{this.onEvict&&this.onEvict(e,n,"rejected-oversized")}catch{}return!1}if(this.map.has(e)){const l=this.map.get(e);this.currentWeight-=l.weight||0,l.value=n,l.weight=s,l.expiresAt=o,this.currentWeight+=l.weight||0,this._moveToTail(l)}else{const l=this._allocNode(e,n,s,o);this.map.set(e,l),this._append(l),this.currentWeight+=l.weight||0,this._evictIfNeeded()}return this}get(e){const n=this._fetchValidNode(e,{countMiss:!0});if(n)return this._moveToTail(n),this.hits++,n.value}peek(e){const n=this._fetchValidNode(e);return n?n.value:void 0}has(e,{ignoreExpiry:n=!1}={}){return!!this._fetchValidNode(e,{ignoreExpiry:n})}getOrSet(e,n,{ttl:t=void 0,weight:r=void 0,staleWhileRevalidate:i=!1}={}){const o=Date.now(),a=this._fetchValidNode(e,{countMiss:!1,allowExpired:i});if(a)if(a.expiresAt&&a.expiresAt<=o){if(typeof n=="function")return this._moveToTail(a),this.hits++,this._refreshStaleEntry(e,n,{ttl:t,weight:r}),a.value;this._removeExpiredNode(a,o,!0)}else return this._moveToTail(a),this.hits++,a.value;else this.misses++;if(typeof n=="function"){const s=n();return s&&typeof s.then=="function"?s.then(l=>{try{this.set(e,l,{ttl:t,weight:r})}catch{}return l}):(this.set(e,s,{ttl:t,weight:r}),s)}return this.set(e,n,{ttl:t,weight:r}),n}setMany(e,{ttl:n=void 0,weight:t=void 0}={}){const r=Date.now(),i=n==null||n===1/0?0:r+n;for(const o of e){if(!o)continue;const[a,s]=o;let l;if(t!=null)l=t;else{try{l=this.weightFn(s)}catch{l=0}l==null&&(l=0)}const c=Number.isFinite(+l)?Math.max(0,+l):0;if(this.map.has(a)){const u=this.map.get(a);this.currentWeight-=u.weight||0,u.value=s,u.weight=c,u.expiresAt=i,this.currentWeight+=u.weight||0,this._moveToTail(u)}else{const u=this._allocNode(a,s,c,i);this.map.set(a,u),this._append(u),this.currentWeight+=u.weight||0}}return this._evictIfNeeded(),this}getMany(e,{ignoreExpiry:n=!1}={}){const t=new Map;for(const r of e){const i=this._fetchValidNode(r,{ignoreExpiry:n,countMiss:!0});i&&(this._moveToTail(i),this.hits++,t.set(r,i.value))}return t}touch(e,n=void 0){const t=this._fetchValidNode(e);if(!t)return!1;const r=Date.now();return n!==void 0&&(t.expiresAt=n==null||n===1/0?0:r+n),this._moveToTail(t),!0}getOrSetAsync(e,n,{ttl:t=void 0,weight:r=void 0,staleWhileRevalidate:i=!1}={}){if(typeof n!="function")return Promise.resolve(this.getOrSet(e,n,{ttl:t,weight:r}));const o=Date.now(),a=this.map.get(e);if(a)if(a.expiresAt&&a.expiresAt<=o){if(i)return this._moveToTail(a),this.hits++,this._refreshStaleEntry(e,n,{ttl:t,weight:r}),Promise.resolve(a.value);this._removeExpiredNode(a,o,!1)}else return this._moveToTail(a),this.hits++,Promise.resolve(a.value);if(this._inflightPromises.has(e))return this._inflightPromises.get(e);this.misses++;let s;try{s=Promise.resolve().then(()=>n())}catch(c){return Promise.reject(c)}const l=s.then(c=>{try{this.set(e,c,{ttl:t,weight:r})}catch{}return this._inflightPromises.delete(e),c},c=>{throw this._inflightPromises.delete(e),c});return this._inflightPromises.set(e,l),l}hasEqual(e,n,{ignoreExpiry:t=!1,seen:r=void 0}={}){const i=this._fetchValidNode(e,{ignoreExpiry:t});if(!i)return!1;const o=i.value;return o===n?!0:typeof o!=="object"||o===null||typeof n!=="object"||n===null?o===n:k(o,n,r)}hasEqualWithSeen(e,n,t,{ignoreExpiry:r=!1}={}){return this.hasEqual(e,n,{ignoreExpiry:r,seen:t})}delete(e){const n=this.map.get(e);if(!n)return!1;const t=n.next;this.map.delete(e),this.currentWeight-=n.weight||0,this._cleanupCursor===n&&(this._cleanupCursor=t),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(n);try{this.onEvict&&this.onEvict(n.key,n.value,"deleted")}catch{}return this._freeNode(n),!0}clear(){for(let e=this.head;e;){const n=e.next;this._freeNode(e),e=n}this.head=this.tail=null,this.map.clear(),this.currentWeight=0,this._cleanupCursor=null,this._cleanupCursorValid=!1}cleanupExpired(){return this.cleanupExpiredUpTo()}cleanupExpiredUpTo(e=1/0){const n=Date.now();let t=0,r=this._cleanupCursor&&this._cleanupCursorValid?this._cleanupCursor:this.head;for(;r&&t<e;){const i=r.next;if(r.expiresAt&&r.expiresAt<=n){const o=r.key,a=r.value;this.map.delete(o),this.currentWeight-=r.weight||0,this._cleanupCursor===r&&(this._cleanupCursor=i),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(r);try{this.onExpire&&this.onExpire(o,a)}catch{}this._freeNode(r),this.expirations++}r=i,t++}return this._cleanupCursor=r||this.head,this._cleanupCursorValid=!!this._cleanupCursor,t}startCleanup(e={}){let n,t;typeof e=="number"?(n=e,t=this.maxCleanupPerTick):(n=Number.isFinite(+e.interval)?+e.interval:Math.max(1e3,Math.min(this.defaultTTL||6e4,6e4)),t=Number.isFinite(+e.maxCleanupPerTick)?Math.max(1,+e.maxCleanupPerTick):this.maxCleanupPerTick),this.stopCleanup(),this._cleanupParams={interval:n,maxCleanupPerTick:t},this._cleanupTimer=setTimeout(()=>this._cleanupTick(),n)}stopCleanup(){this._cleanupTimer&&(clearTimeout(this._cleanupTimer),this._cleanupTimer=null),this._cleanupRunning=!1,this._cleanupParams=null}[Symbol.dispose](){try{this.stopCleanup()}catch{}try{this.clear()}catch{}}async[Symbol.asyncDispose](){try{this.stopCleanup()}catch{}try{this.clear()}catch{}}_cleanupTick(){if(this._cleanupTimer!=null){if(this._cleanupRunning){this._cleanupTimer=setTimeout(()=>this._cleanupTick(),this._cleanupParams.interval);return}this._cleanupRunning=!0;try{this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick)}finally{this._cleanupRunning=!1}this._cleanupTimer=setTimeout(()=>this._cleanupTick(),this._cleanupParams.interval)}}get size(){return this.map.size}get hitRate(){const e=(this.hits||0)+(this.misses||0);return e?this.hits/e:0}stats(){return{size:this.size,weight:this.currentWeight,hits:this.hits,misses:this.misses,evictions:this.evictions,expirations:this.expirations,rejected:this.rejected,poolSize:this.pool.length}}resize({maxEntries:e,maxWeight:n}={}){Number.isFinite(+e)&&(this.maxEntries=Math.max(0,+e)),Number.isFinite(+n)&&(this.maxWeight=Math.max(0,+n)),this._evictIfNeeded()}*entries(e="MRU"){if(e==="MRU")for(let n=this.tail;n;n=n.prev)yield[n.key,n.value];else for(let n=this.head;n;n=n.next)yield[n.key,n.value]}[Symbol.iterator](){return this.entries("MRU")}*keys(e="MRU"){for(const[n]of this.entries(e))yield n}*values(e="MRU"){for(const[,n]of this.entries(e))yield n}}function k(h,e,n=void 0){if(h===e)return!0;if(h==null||e==null||typeof h!=="object"||typeof e!=="object")return h===e;n||(n=new WeakMap);let i=n.get(h);if(i&&i.has(e))return!0;if(i||(i=new WeakSet,n.set(h,i)),i.add(e),Object.getPrototypeOf(h)!==Object.getPrototypeOf(e))return!1;if(typeof Uint8Array<"u"&&h instanceof Uint8Array){if(!(e instanceof Uint8Array)||h.length!==e.length)return!1;for(let s=0;s<h.length;s++)if(h[s]!==e[s])return!1;return!0}if(Array.isArray(h)){if(!Array.isArray(e)||h.length!==e.length)return!1;for(let s=0;s<h.length;s++)if(!k(h[s],e[s],n))return!1;return!0}if(ArrayBuffer.isView(h)){if(!ArrayBuffer.isView(e)||h.byteLength!==e.byteLength)return!1;const s=new Uint8Array(h.buffer,h.byteOffset||0,h.byteLength),l=new Uint8Array(e.buffer,e.byteOffset||0,e.byteLength);for(let c=0;c<s.length;c++)if(s[c]!==l[c])return!1;return!0}if(h instanceof ArrayBuffer){if(!(e instanceof ArrayBuffer)||h.byteLength!==e.byteLength)return!1;const s=new Uint8Array(h),l=new Uint8Array(e);for(let c=0;c<s.length;c++)if(s[c]!==l[c])return!1;return!0}if(h instanceof Date)return e instanceof Date?h.getTime()===e.getTime():!1;if(h instanceof RegExp)return e instanceof RegExp?h.toString()===e.toString():!1;if(h instanceof Map){if(!(e instanceof Map)||h.size!==e.size)return!1;for(const[s,l]of h)if(!e.has(s)||!k(l,e.get(s),n))return!1;return!0}if(h instanceof Set){if(!(e instanceof Set)||h.size!==e.size)return!1;let s=!0;for(const l of h)if(l!==null&&typeof l=="object"){s=!1;break}if(s){for(const l of h)if(!e.has(l))return!1;return!0}for(const l of h){let c=!1;for(const u of e)if(k(l,u,n)){c=!0;break}if(!c)return!1}return!0}const o=Object.keys(h),a=Object.keys(e);if(o.length!==a.length)return!1;for(let s=0;s<o.length;s++){const l=o[s];if(!Object.prototype.hasOwnProperty.call(e,l)||!k(h[l],e[l],n))return!1}return!0}let T=null;if(typeof process<"u"&&process.hrtime&&typeof process.hrtime.bigint=="function")try{const h=Number(process.hrtime.bigint()/1000000n);T=Date.now()-h}catch{T=null}const _=()=>{const h=Date.now();if(typeof performance<"u"&&typeof performance.now=="function"&&typeof performance.timeOrigin=="number")try{const e=performance.timeOrigin+performance.now();return Math.abs(e-h)<1e3?e:h}catch{}if(T!=null)try{const e=Number(process.hrtime.bigint()/1000000n)+T;return Math.abs(e-h)<1e3?e:h}catch{return h}return h};class E{constructor(e=16){const n=Math.max(2,Number(e)||16);for(this._capacity=1;this._capacity<n;)this._capacity<<=1;this._mask=this._capacity-1,this._buffer=new Array(this._capacity),this._head=0,this._tail=0,this._size=0}push(e){return this._size===this._capacity&&this._grow(),this._buffer[this._tail]=e,this._tail=this._tail+1&this._mask,this._size++,this._size}shift(){if(this._size===0)return;const e=this._buffer[this._head];return this._buffer[this._head]=void 0,this._head=this._head+1&this._mask,this._size--,e}peek(){return this._size===0?void 0:this._buffer[this._head]}clear(){if(this._size===0)return;let e=this._head;for(let n=0;n<this._size;n++)this._buffer[e]=void 0,e=e+1&this._mask;this._head=this._tail=0,this._size=0}get length(){return this._size}get capacity(){return this._capacity}get isEmpty(){return this._size===0}*[Symbol.iterator](){let e=this._head;for(let n=0;n<this._size;n++)yield this._buffer[e+n&this._mask]}values(){return this[Symbol.iterator]()}*keys(){for(let e=0;e<this._size;e++)yield e}*entries(){for(let e=0;e<this._size;e++)yield[e,this._buffer[this._head+e&this._mask]]}*drain(){for(;this._size>0;)yield this.shift()}toArray(){const e=new Array(this._size);for(let n=0;n<this._size;n++)e[n]=this._buffer[this._head+n&this._mask];return e}_grow(){const e=this._buffer,t=this._capacity<<1,r=new Array(t);for(let i=0;i<this._size;i++)r[i]=e[this._head+i&this._mask];this._buffer=r,this._capacity=t,this._mask=t-1,this._head=0,this._tail=this._size&this._mask}pushMany(e){if(!Array.isArray(e)||e.length===0)return this._size;const n=this._size+e.length;for(;this._capacity<n;)this._grow();const t=Math.min(e.length,this._capacity-this._tail);for(let i=0;i<t;i++)this._buffer[this._tail+i]=e[i];this._tail=this._tail+t&this._mask;let r=t;for(;r<e.length;){const i=Math.min(e.length-r,this._capacity-this._tail);for(let o=0;o<i;o++)this._buffer[this._tail+o]=e[r+o];this._tail=this._tail+i&this._mask,r+=i}return this._size=n,this._size}unshiftMany(e){if(!Array.isArray(e)||e.length===0)return this._size;const n=this._size+e.length;for(;this._capacity<n;)this._grow();let t=this._head-e.length&this._mask;for(let r=0;r<e.length;r++)this._buffer[t+r&this._mask]=e[r];return this._head=t,this._size=n,this._size}}function F(h,e="ERR_ITEM"){return!h||typeof h!="object"?{error:!0,code:e,message:h?String(h):void 0,stack:void 0}:{error:!0,code:h.code||e,message:h.message,stack:h.stack}}function A(h){return!h||!h.error?String(h):`${h.code||"ERR"}: ${h.message||""}`}class U{constructor(e=0,n={}){this._debugLevel=0,this._counters=Object.create(null),this._format=n&&n.format||"text",this.name=n&&n.name||null,this._formatter=n&&typeof n.formatter=="function"?n.formatter:null,this._output=n&&typeof n.output=="function"?n.output:null,this.setDebugLevel(e)}setDebugLevel(e){let n=NaN;typeof e=="number"?n=e:typeof e=="string"||typeof e=="boolean"?n=Number(e):(e instanceof Number||e instanceof String||e instanceof Boolean)&&(n=Number(e.valueOf())),this._debugLevel=Number.isFinite(n)&&n>=0?Math.max(0,Math.min(3,Math.floor(n))):0}getDebugLevel(){return this._debugLevel}isDebugLevel(e=1){return Number(this._debugLevel)>=Number(e||1)}isDebug(){return this.isDebugLevel(1)}_resolveLogArgs(e){return e.map(n=>{if(typeof n=="function")try{return n()}catch(t){return t}return n})}_emit(e,n,t,r,i={}){if(!this.isDebugLevel(e))return;const o=this._resolveLogArgs(r),a=i.msgArray?o:o.length===1?o[0]:o;let s={level:t,msg:a,ts:_(),format:this._format};if(this.name&&(s.name=this.name),this._formatter)try{const l=this._formatter(s);if(l!=null){if(typeof l=="string"){if(this._output){try{this._output(l)}catch{}return}console&&typeof console[n]=="function"&&console[n](l);return}s=l}}catch{}if(this._output){try{this._output(s)}catch{}return}if(!(!console||typeof console[n]!="function"))if(this._format==="json")try{const l=typeof s=="string"?s:JSON.stringify(s);console[n](l)}catch{console[n](...Array.isArray(o)?o:[o])}else console[n](...o)}error(...e){const n=e.map(t=>{try{if(t&&t.error)return A(t);if(t instanceof Error||t&&typeof t=="object")return A(F(t))}catch{}return t});this._emit(1,"error","error",n)}warn(...e){this._emit(2,"warn","warn",e)}info(...e){this._emit(3,"info","info",e)}log(...e){this._emit(3,"log","log",e)}debug(...e){this._emit(3,"debug","debug",e)}table(...e){if(!this.isDebugLevel(3)||!console)return;if(this._format==="json"){this._emit(3,"log","table",e,{msgArray:!0});return}const n=this._resolveLogArgs(e);typeof console.table=="function"?console.table(...n):typeof console.log=="function"&&console.log(...n)}incrementCounter(e){if(!this.isDebug())return;const n=String(e||"");n&&(this._counters[n]=(this._counters[n]||0)+1)}getDebugCounters(){return Object.assign({},this._counters)}resetDebugCounters(){this._counters=Object.create(null)}}const D=Symbol("PowerSubscriberSet.original");class x{constructor(e={}){const{weak:n=!1,maxListeners:t=0}=e||{};this._weak=!!n,this._maxListeners=Number.isFinite(Number(t))?Math.max(0,Math.floor(Number(t))):0,this._listeners=new Set,this._onceMap=new WeakMap,this._finalization=null,this._weak&&typeof WeakRef<"u"&&typeof FinalizationRegistry<"u"&&(this._finalization=new FinalizationRegistry(r=>{this._listeners.delete(r.ref)}))}get size(){return this._cleanup(),this._listeners.size}add(e){if(typeof e!="function"){if(!this._weak||!e||typeof e.deref!="function")throw new TypeError("listener must be a function");if(this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);return this._listeners.add(e),()=>this.delete(e)}if(this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);const n=this._makeEntry(e);return this._listeners.add(n),()=>this.delete(e)}addOnce(e){if(typeof e!="function")throw new TypeError("listener must be a function");const n=(...r)=>{try{e(...r)}finally{this.delete(e)}};try{n[D]=e}catch{}if(this._onceMap.set(e,n),this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);const t=this._makeEntry(n);return this._listeners.add(t),()=>this.delete(e)}delete(e){let n=e;const t=this._onceMap.get(e);t&&(n=t,this._onceMap.delete(e));for(const r of this._listeners){const i=this._deref(r);if(!i){this._listeners.delete(r);continue}if(i===n)return this._listeners.delete(r),this._finalization&&typeof r.deref=="function"&&this._finalization.unregister(r),!0}return!1}forEach(e){for(const n of this._listeners){const t=this._deref(n);if(!t){this._listeners.delete(n);continue}e(t)}}clear(){this._listeners.clear(),this._onceMap=new WeakMap}values(){this._cleanup();const e=[];for(const n of this._listeners){const t=this._deref(n);t&&e.push(t)}return e}[Symbol.iterator](){return this.values()[Symbol.iterator]()}_cleanup(){if(!(!this._weak||typeof WeakRef>"u"))for(const e of this._listeners)e&&typeof e.deref=="function"&&!e.deref()&&this._listeners.delete(e)}_makeEntry(e){if(this._weak&&typeof WeakRef<"u"){const n=new WeakRef(e);if(this._finalization)try{this._finalization.register(e,{ref:n},n)}catch{}return n}return e}_deref(e){return e&&typeof e.deref=="function"?e.deref():e}}function q(h){if(h){if(typeof h.cleanup=="function"){try{h.cleanup()}catch{}return}if(typeof h._cleanup=="function"){try{h._cleanup()}catch{}return}if(typeof h[Symbol.iterator]=="function"&&typeof h.delete=="function")for(const e of h)(e&&typeof e.deref=="function"?e.deref():e)||h.delete(e)}}class C{constructor(e={}){this._listeners=new Map,this._maxListeners=Number.isFinite(Number(e.maxListeners))?Math.max(0,Number(e.maxListeners)):0,this._weak=!!e.weak,this._fr=null,this._finalizationRefs=new WeakMap}_ensureFinalizationRegistry(){return!this._weak||typeof FinalizationRegistry>"u"?null:this._fr?this._fr:(this._fr=new FinalizationRegistry(e=>{try{const{event:n,ref:t}=e,r=this._listeners.get(n);r&&typeof r.delete=="function"&&r.delete(t.deref?t.deref():t)}catch{}}),this._fr)}cleanup(){if(this._weak)for(const[e,n]of this._listeners)q(n),n.size===0&&this._listeners.delete(e)}_getBucket(e){let n=this._listeners.get(e);if(!n)return null;if(n instanceof x)return n;if(n&&typeof n[Symbol.iterator]=="function"){const t=new x({maxListeners:this._maxListeners,weak:this._weak});for(const r of n){const i=r&&typeof r.deref=="function"?r.deref():r;i&&t.add(i)}return this._listeners.set(e,t),t}return null}_registerWeakListener(e,n){const t=this._ensureFinalizationRegistry();if(!t||typeof WeakRef>"u")return null;const r=new WeakRef(e);try{t.register(e,{event:n,ref:r},r),this._finalizationRefs.set(e,r)}catch{return null}return r}_unregisterWeakListener(e){if(!this._fr||!this._finalizationRefs.has(e))return;const n=this._finalizationRefs.get(e);try{this._fr.unregister(n)}catch{}this._finalizationRefs.delete(e)}on(e,n){if(typeof n!="function")throw new TypeError("listener must be a function");let t=this._getBucket(e);t||(t=new x({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,t));const r=t.add(n);return this._registerWeakListener(n,e)?()=>{r(),this._unregisterWeakListener(n)}:r}once(e,n){if(typeof n!="function")throw new TypeError("listener must be a function");let t=this._getBucket(e);t||(t=new x({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,t));const r=t.addOnce(n);return this._registerWeakListener(n,e)?()=>{r(),this._unregisterWeakListener(n)}:r}off(e,n){const t=this._getBucket(e);t&&(t.delete(n),this._unregisterWeakListener(n),t.size===0&&this._listeners.delete(e))}emit(e,n){const t=this._listeners.get(e);if(!t||t.size===0)return!1;if(t instanceof x){let i=!1;return t.forEach(o=>{i=!0;try{o(n)}catch{}}),t.size===0&&this._listeners.delete(e),i}const r=t.size>0;for(const i of t){const o=i&&typeof i.deref=="function"?i.deref():i;if(!o){t.delete(i);continue}try{o(n)}catch{}}return t.size===0&&this._listeners.delete(e),r}async emitAsync(e,n,{concurrency:t=1/0}={}){const r=this.listeners(e);if(r.length===0)return!1;const i=Number.isFinite(+t)&&+t>0?Math.max(1,Math.floor(+t)):1/0,o=async l=>{try{await l(n)}catch{}};if(!Number.isFinite(i)||i>=r.length)return await Promise.all(r.map(o)),!0;let a=0;const s=Array.from({length:i},async()=>{for(;a<r.length;){const l=r[a++];l&&await o(l)}});return await Promise.all(s),!0}listeners(e){const n=this._listeners.get(e);return n?n instanceof x?n.values():Array.from(n).map(t=>t&&typeof t.deref=="function"?t.deref():t).filter(Boolean):[]}clear(e){if(e===void 0){this._listeners.clear();return}this._listeners.delete(e)}}let V=class{constructor(e,n,t){this._underlying=e,this._logger=n,this._pool=t,this.onmessage=null,this.onerror=null,this.onmessageerror=null}postMessage(e,n){let t=e,r=n;if(e!==null&&typeof e=="object"&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer))try{const o=this._pool._encodeForTransfer(e);if(!r||Array.isArray(r)&&r.length===0)r=[o.buffer];else{let a=!1;if(Array.isArray(r)){for(let s of r)if(s===o.buffer){a=!0;break}a||(r=[...r,o.buffer])}else if(r.length===0)r=[o.buffer];else{const s=[];for(let l of r)s.push(l),l===o.buffer&&(a=!0);a||s.push(o.buffer),r=s}}t=o}catch{r=n,t=e}!r&&(t instanceof Uint8Array||ArrayBuffer.isView(t))&&(r=[t.buffer]);try{r&&r.length?this._underlying.postMessage(t,r):this._underlying.postMessage(t)}catch(o){throw this._logger.error(o,"Failed to postMessage to underlying worker"),o}}addEventListener(...e){return this._underlying.addEventListener(...e)}removeEventListener(...e){return this._underlying.removeEventListener(...e)}terminate(){typeof this._underlying.terminate=="function"&&this._underlying.terminate()}};class G extends Error{constructor(e="PowerPool has been shut down"){super(e),this.name="PowerPoolShutdownError"}}class R{constructor(e,n={}){const t=typeof navigator<"u"&&navigator.hardwareConcurrency||2,{size:r=Math.min(t,2),minSize:i=2,maxSize:o=Math.max(r,t),workerOptions:a={},maxTasksPerWorker:s=1/0,idleTimeout:l=6e4,taskQueue:c=!0,queuePolicy:u="enqueue",lazy:f=!0}=n;this._workerSource=e,this._workerOptions=a,this._maxTasksPerWorker=s,this.minSize=Math.max(0,i),this.maxSize=Math.max(this.minSize,o),this.idleTimeout=Math.max(0,l),this.taskQueueEnabled=!!c,this._queuePolicy=["enqueue","drop-oldest","drop-newest","reject"].includes(u)?u:"enqueue",this._createdAt=_(),this._totalWorkersCreated=0,this._totalTasksCompleted=0,this._taskDurationsWelfordCount=0,this._taskDurationsWelfordMean=0,this._taskDurationsWelfordM2=0,this._taskDurationsMin=Number.POSITIVE_INFINITY,this._taskDurationsMax=Number.NEGATIVE_INFINITY,this._ewmaLatency=null,this._autoScale=null,this._autoScaleInterval=null,this._lastAutoScaleAt=null,this._terminatedWorkerTaskCountsTotal=0,this._terminatedWorkerTaskCountsCount=0,this.workers=[],this.queue=new E;const p={maxListeners:n&&(n.listenerMaxListeners??n.maxListeners),weak:n&&!!n.weakListeners};this._bus=new C(p),this._queueHighThreshold=Number.isFinite(Number(n&&n.queueHighThreshold))?Math.max(0,Math.floor(Number(n.queueHighThreshold))):1/0,this._queueHighCrossed=!1,this._onmessage=null,this._onerror=null,this._onidle=null,this._onresize=null,this._nextIndex=0,this._nextWorkerId=0,this._activeTasks=0,this._isIdle=!0;const g=n&&typeof n.debugLevel=="number"?n.debugLevel:1;this._logger=new U(g,{name:"powerPool"}),this._pendingResponses=new Map,this._underlyingToWorkerObj=new Map;const m=f?Math.min(this.minSize,this.maxSize):Math.min(Math.max(r,this.minSize),this.maxSize);for(let d=0;d<m;d++)this._addWorkerInstance();if(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2))),this._encodeCache=new Map,this._encodeCacheLimit=Math.max(16,n&&n.encodeCacheLimit?n.encodeCacheLimit:64),this._encodeCacheByteLimit=Number.isFinite(n&&Number(n.encodeCacheByteLimit))?Math.max(0,Number(n.encodeCacheByteLimit)):1/0,this._encodeCacheBytes=0,n&&n.autoScale){const d=typeof n.autoScale=="object"?n.autoScale:{},y=Number.isFinite(Number(d.intervalMs))?Math.max(100,Math.floor(d.intervalMs)):1e3,w=Number.isFinite(Number(d.targetMs))?Math.max(1,Number(d.targetMs)):50,J=Number.isFinite(Number(d.alpha))?Math.max(0,Math.min(1,Number(d.alpha))):.2,W=Number.isFinite(Number(d.cooldownMs))?Math.max(0,Math.floor(d.cooldownMs)):5e3,Q=Number.isFinite(Number(d.hysteresis))?Math.max(0,Math.min(1,Number(d.hysteresis))):.2,Y=Number.isFinite(Number(d.stepUp))?Math.max(1,Math.floor(Number(d.stepUp))):1,Z=Number.isFinite(Number(d.stepDown))?Math.max(1,Math.floor(Number(d.stepDown))):1,X=Number.isFinite(Number(d.backoffFactor))?Math.max(1,Number(d.backoffFactor)):1,ee=Number.isFinite(Number(d.backoffMaxMultiplier))?Math.max(1,Number(d.backoffMaxMultiplier)):8,ne=Number.isFinite(Number(d.backoffResetMs))?Math.max(0,Math.floor(Number(d.backoffResetMs))):W*4;this._autoScale={enabled:!0,intervalMs:y,targetMs:w,alpha:J,cooldownMs:W,hysteresis:Q,stepUp:Y,stepDown:Z,backoffFactor:X,backoffMaxMultiplier:ee,backoffResetMs:ne},this._autoScaleBackoffMultiplier=1;try{this._autoScaleInterval=setInterval(()=>this._autoScaleTick(),y)}catch{}}}_debugLog(e,n){try{this&&this._logger&&typeof this._logger.debug=="function"&&(e?this._logger.debug(e,n||"swallowed error"):this._logger.debug(n||"swallowed error"))}catch{}}_ensureReaper(){try{this._reaperInterval||(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2))))}catch{}}_clearLifecycleIntervals(){try{this._reaperInterval&&(clearInterval(this._reaperInterval),this._reaperInterval=null)}catch{}try{this._autoScaleInterval&&(clearInterval(this._autoScaleInterval),this._autoScaleInterval=null)}catch{}}shutdown(){this._clearLifecycleIntervals();try{for(const[e]of this._pendingResponses)try{this._cleanupPendingResponse(e,{rejectWith:new G("pool:shutdown")})}catch(n){this._debugLog&&this._debugLog(n,"shutdown: cleanup pending response")}}catch(e){this._debugLog&&this._debugLog(e,"shutdown: iterate pending responses")}try{for(const e of this.workers)try{e.worker.terminate()}catch(n){this._debugLog&&this._debugLog(n,"shutdown: terminate worker")}}catch(e){this._debugLog&&this._debugLog(e,"shutdown: terminate workers loop")}try{this._underlyingToWorkerObj&&this._underlyingToWorkerObj.clear()}catch{}try{const e=this.workers.map(n=>n&&n.id).filter(n=>n!=null);e&&e.length&&this._bus.emit("pool:scale",{action:"remove",terminated:e,count:e.length})}catch(e){this._debugLog&&this._debugLog(e,"shutdown: pool scale emit error")}this.workers=[],this.queue=new E,this._activeTasks=0}_encodeForTransfer(e){try{const n=JSON.stringify(e);if(typeof n=="string"&&n.length>2048)return S(e);const t=this._encodeCache.get(n);if(t){try{this._encodeCache.delete(n),this._encodeCache.set(n,t)}catch{}return t}const r=S(e),i=r&&r.byteLength||0,o=()=>this._encodeCache.size>=this._encodeCacheLimit||this._encodeCacheByteLimit!==1/0&&this._encodeCacheBytes+i>this._encodeCacheByteLimit;for(;o();){const a=this._encodeCache.keys().next().value;if(!a)break;try{const s=this._encodeCache.get(a);s&&s.byteLength&&(this._encodeCacheBytes=Math.max(0,this._encodeCacheBytes-s.byteLength))}catch{}this._encodeCache.delete(a)}return this._encodeCache.set(n,r),r&&r.byteLength&&(this._encodeCacheBytes+=r.byteLength),r}catch{return S(e)}}prepareBuffer(e,n={}){const{clone:t=!0}=n,r=this._encodeForTransfer(e);return t?r.slice():r}prepareBuffers(e,n={}){if(!Array.isArray(e))throw new Error("prepareBuffers expects an array");const{clone:t=!0,zeroCopy:r=!1}=n,i=new Array(e.length);for(let o=0;o<e.length;o++){const a=e[o]&&typeof e[o]=="object"&&"message"in e[o]?e[o]:{message:e[o]},s=a.message,l=a.transfer;if(l){i[o]={message:s,transfer:l};continue}if(s!==null&&typeof s=="object"&&!ArrayBuffer.isView(s)&&!(s instanceof ArrayBuffer)){if(r){i[o]={message:s,transfer:void 0};continue}try{const u=this._encodeForTransfer(s);if(t){const f=u.slice();i[o]={message:f,transfer:[f.buffer]}}else i[o]={message:u,transfer:void 0};continue}catch{i[o]={message:s,transfer:void 0};continue}}if(s instanceof ArrayBuffer||ArrayBuffer.isView(s)){const u=s instanceof ArrayBuffer?s:s.buffer;i[o]={message:s,transfer:[u]};continue}i[o]={message:s,transfer:void 0}}return i}_prepareForTransfer(e,n,t){const r=t&&!!t.zeroCopy;if(e!==null&&typeof e=="object"&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer)){if(r)return{message:e,transfer:n};try{const a=this._encodeForTransfer(e).slice();let s=n;if(!s||Array.isArray(s)&&s.length===0)s=[a.buffer];else if(Array.isArray(s)){let l=!1;for(const c of s)if(c===a.buffer){l=!0;break}l||(s=[...s,a.buffer])}else if(s.length===0)s=[a.buffer];else{const l=[];let c=!1;for(const u of s)l.push(u),u===a.buffer&&(c=!0);c||l.push(a.buffer),s=l}return{message:a,transfer:s}}catch{return{message:e,transfer:n}}}return e instanceof Uint8Array||ArrayBuffer.isView(e)||e instanceof ArrayBuffer?{message:e,transfer:[e.buffer||e]}:{message:e,transfer:n}}_decrementActiveTasks(e=1){try{const n=Number.isFinite(Number(e))?Math.max(0,Math.floor(Number(e))):1;this._activeTasks=Math.max(0,this._activeTasks-n)}catch{this._activeTasks=0}}resize(e){let n=this.minSize,t=this.maxSize;if(e!=null&&typeof e=="object")Number.isFinite(e.minSize)&&(n=Math.max(0,Math.floor(e.minSize))),Number.isFinite(e.maxSize)&&(t=Math.max(n,Math.floor(e.maxSize)));else{const o=Number(e);if(!Number.isFinite(o))return;t=Math.max(n,Math.floor(o))}this.minSize=Math.max(0,n),this.maxSize=Math.max(this.minSize,t);let r=0;for(;this.workers.length<this.minSize&&this.workers.length<this.maxSize;)this._addWorkerInstance(),r++;const i=[];for(;this.workers.length>this.maxSize;){const o=this.workers.pop();if(o){this._decrementActiveTasks(o.tasks||0);try{o.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(o),this._terminatedWorkerTaskCountsTotal+=o.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1,i.push(o.id)}}if(i.length||r){const o={data:{type:"pool:resize",terminated:i,added:r,minSize:this.minSize,maxSize:this.maxSize}};if(this._onresize)try{this._onresize(o)}catch(a){this._logger.error(a,"Pool onresize handler error")}try{this._bus.emit("resize",o)}catch(a){this._logger.error(a,"pool resize listener error")}try{this._bus.emit("pool:scale",{added:r,terminated:i,minSize:this.minSize,maxSize:this.maxSize})}catch(a){this._logger.error(a,"pool scale resize listener error")}}this._updateIdleState()}_createWorkerInstance(){if(typeof this._workerSource=="function"){const e=this._workerSource;if(e.prototype===void 0)return e();try{return new e}catch(n){const t=String(n&&n.message);if(n instanceof TypeError&&/not a constructor|cannot be invoked without\s*'new'|Class constructor|not constructable/i.test(t))return e();throw n}}if(typeof this._workerSource=="string"){let e;try{e=new Function("try { return import.meta && import.meta.url } catch (e) { return undefined }")()}catch{e=void 0}if(!e&&typeof document<"u"){const n=document.currentScript;n&&n.src&&(e=n.src)}!e&&typeof location<"u"&&location.href&&(e=location.href);try{if(e)return new Worker(new URL(this._workerSource,e),this._workerOptions)}catch{}return new Worker(this._workerSource,this._workerOptions)}throw new Error("Invalid workerSource: expected Worker factory or relative path string")}_deleteWorkerUnderlyingMapping(e){try{const n=e&&e.worker&&e.worker._underlying;n&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(n)}catch{}}_addWorkerInstance(e){e==null&&(e=this._nextWorkerId++);const n=this._createWorkerInstance(),t=new V(n,this._logger,this),r={id:e,worker:t,tasks:0,lastActive:_(),latencyEwma:null,_startTimes:new E};r.completedTasks=0,this.workers.push(r),this._totalWorkersCreated++;try{this._bus.emit("pool:scale",{action:"add",id:r.id,minSize:this.minSize,maxSize:this.maxSize})}catch(s){this._logger.error(s,"pool scale add listener error")}try{this._underlyingToWorkerObj.set(n,r)}catch{}t.onmessage=s=>{const l=_();r.tasks=Math.max(0,r.tasks-1),this._decrementActiveTasks(1),r.lastActive=l;try{const c=s&&s.data;if(c&&typeof c=="object"&&c.correlationId!=null){const u=String(c.correlationId),f=Object.prototype.hasOwnProperty.call(c,"response")?c.response:c;this._cleanupPendingResponse(u,{resolveWith:f})}}catch(c){this._debugLog&&this._debugLog(c,"worker.onmessage: resolve pending response")}try{const c=r._startTimes&&r._startTimes.length?r._startTimes.shift():null;let u=null;try{const f=s&&s.data;if(f&&typeof f.duration=="number"&&Number.isFinite(f.duration)?u=Math.max(0,Number(f.duration)):c!=null&&(u=Math.max(0,l-c)),u!=null){const p=this._autoScale&&this._autoScale.alpha||.2;r.latencyEwma==null?r.latencyEwma=u:r.latencyEwma=p*u+(1-p)*r.latencyEwma,this._ewmaLatency==null?this._ewmaLatency=u:this._ewmaLatency=p*u+(1-p)*this._ewmaLatency,this._totalTasksCompleted=(this._totalTasksCompleted||0)+1,r.completedTasks=(r.completedTasks||0)+1;const g=1,m=this._taskDurationsWelfordCount;this._taskDurationsWelfordCount=m+g;const d=u-this._taskDurationsWelfordMean;this._taskDurationsWelfordMean+=d*g/this._taskDurationsWelfordCount;const y=u-this._taskDurationsWelfordMean;this._taskDurationsWelfordM2+=d*y,u<this._taskDurationsMin&&(this._taskDurationsMin=u),u>this._taskDurationsMax&&(this._taskDurationsMax=u)}}catch(f){this._debugLog&&this._debugLog(f,"worker.onmessage: latency tracking inner")}}catch(c){this._debugLog&&this._debugLog(c,"worker.onmessage: latency tracking outer")}if(!this._queuePaused&&this.queue.length>0&&r.tasks<this._maxTasksPerWorker){const c=this.queue.shift();try{const u=_();c.transfer?t.postMessage(c.message,c.transfer):t.postMessage(c.message),r._startTimes.push(u),r.tasks++,this._activeTasks++}catch(u){this._debugLog&&this._debugLog(u,"dispatch queued message to worker failed"),this._logger.error(u,"Failed to dispatch queued message to worker")}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1)}if(this._onmessage)try{this._onmessage(s)}catch(c){this._logger.error(c,"Pool onmessage handler error")}try{this._bus.emit("message",s)}catch(c){this._logger.error(c,"pool listener error")}this._updateIdleState()};const i=s=>{let l=s&&s.data!==void 0?s.data:s,c=l;if(l&&(l instanceof ArrayBuffer||ArrayBuffer.isView(l)))try{c=M(l)}catch(f){try{a(f)}catch{}c=l}const u={data:c,originalEvent:s};if(typeof t.onmessage=="function")try{t.onmessage(u)}catch(f){this._logger.error(f,"worker wrapper onmessage error")}},o=s=>{if(typeof t.onerror=="function")try{t.onerror(s)}catch(l){this._logger.error(l,"worker wrapper onerror error")}try{this._bus.emit("error",s)}catch(l){this._logger.error(l,"pool error listener error")}},a=s=>{if(typeof t.onmessageerror=="function")try{t.onmessageerror(s)}catch(l){this._logger.error(l,"worker wrapper onmessageerror error")}try{this._bus.emit("messageerror",s)}catch(l){this._logger.error(l,"pool messageerror listener error")}};if(typeof n.addEventListener=="function"){try{n.addEventListener("message",i)}catch(s){this._debugLog&&this._debugLog(s,"attach addEventListener message")}try{n.addEventListener("error",o)}catch(s){this._debugLog&&this._debugLog(s,"attach addEventListener error")}try{n.addEventListener("messageerror",a)}catch(s){this._debugLog&&this._debugLog(s,"attach addEventListener messageerror")}}else if(typeof n.on=="function"){try{n.on("message",i)}catch(s){this._debugLog&&this._debugLog(s,"attach underlying.on message")}try{n.on("error",o)}catch(s){this._debugLog&&this._debugLog(s,"attach underlying.on error")}try{n.on("messageerror",a)}catch(s){this._debugLog&&this._debugLog(s,"attach underlying.on messageerror")}}else{try{n.onmessage=i}catch(s){this._debugLog&&this._debugLog(s,"assign underlying.onmessage")}try{n.onerror=o}catch(s){this._debugLog&&this._debugLog(s,"assign underlying.onerror")}try{n.onmessageerror=a}catch(s){this._debugLog&&this._debugLog(s,"assign underlying.onmessageerror")}}return r}_findLeastLoadedWorker(){if(!this.workers.length)return null;let e=null,n=1/0,t=Number.POSITIVE_INFINITY;for(let r=0;r<this.workers.length;r++){const i=this.workers[r],o=i.latencyEwma!=null?i.latencyEwma:Number.POSITIVE_INFINITY;(i.tasks<n||i.tasks===n&&o<t)&&(e=i,n=i.tasks,t=o)}return e}_handleUnderlyingMessage(e,n){const t=this._underlyingToWorkerObj.get(e);if(!t)return;const r=t.worker;let i=n&&n.data!==void 0?n.data:n,o=i;if(i&&(i instanceof ArrayBuffer||ArrayBuffer.isView(i)))try{o=M(i)}catch(s){try{this._handleUnderlyingMessageError(e,s)}catch{}o=i}const a={data:o,originalEvent:n};if(typeof r.onmessage=="function")try{r.onmessage(a)}catch(s){this._logger.error(s,"worker wrapper onmessage error")}}_handleUnderlyingError(e,n){const t=this._underlyingToWorkerObj.get(e);if(!t)return;const r=t.worker;if(typeof r.onerror=="function")try{r.onerror(n)}catch(i){this._logger.error(i,"worker wrapper onerror error")}try{this._bus.emit("error",n)}catch(i){this._logger.error(i,"pool error listener error")}}_handleUnderlyingMessageError(e,n){const t=this._underlyingToWorkerObj.get(e);if(!t)return;const r=t.worker;if(typeof r.onmessageerror=="function")try{r.onmessageerror(n)}catch(i){this._logger.error(i,"worker wrapper onmessageerror error")}try{this._bus.emit("messageerror",n)}catch(i){this._logger.error(i,"pool messageerror listener error")}}postMessage(e,n,t){t=t||void 0;const r=t&&t.workerId!=null?t.workerId:null,i=r!=null?this.workers.find(u=>u.id===r):this._findLeastLoadedWorker(),o=!!(t&&(t.awaitResponse||t.correlationId!=null));let a,s;if(o){if(a=t.correlationId!=null?String(t.correlationId):this._generateCorrelationId(),!(e!==null&&typeof e=="object"&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer)))throw new Error("postMessage awaitResponse requires a plain-object message");e=Object.assign({},e,{correlationId:a}),s=new Promise((f,p)=>{const g={resolve:f,reject:p,timer:null},m=a!=null?String(a):a;t&&t.timeout&&(g.timer=setTimeout(()=>{try{this._cleanupPendingResponse(m,{rejectWith:new Error("postMessage response timeout")})}catch{try{p(new Error("postMessage response timeout"))}catch{}}},t.timeout)),this._pendingResponses.set(m,g)}),a=a!=null?String(a):a}if(i&&i.tasks<this._maxTasksPerWorker)try{const u=_(),f=this._prepareForTransfer(e,n,t);return f.transfer&&f.transfer.length?i.worker.postMessage(f.message,f.transfer):i.worker.postMessage(f.message),i._startTimes&&typeof i._startTimes.push=="function"&&i._startTimes.push(u),i.tasks++,this._activeTasks++,i.lastActive=u,this._updateIdleState(),o?s:!0}catch(u){if(o&&a){try{this._cleanupPendingResponse(a,{rejectWith:u})}catch{}return this._logger.error(u,"Failed to postMessage to worker"),s}return this._logger.error(u,"Failed to postMessage to worker"),!1}if(r!=null&&(!i||i.tasks>=this._maxTasksPerWorker)){if(o&&a){try{this._cleanupPendingResponse(a,{rejectWith:new Error("targeted worker unavailable")})}catch{}return s}return!1}if(r==null&&this.workers.length<this.maxSize){const u=this._addWorkerInstance();try{const f=_(),p=this._prepareForTransfer(e,n,t);return p.transfer&&p.transfer.length?u.worker.postMessage(p.message,p.transfer):u.worker.postMessage(p.message),u._startTimes&&typeof u._startTimes.push=="function"&&u._startTimes.push(f),u.tasks++,this._activeTasks++,u.lastActive=f,this._updateIdleState(),o?s:!0}catch(f){if(o&&a){try{this._cleanupPendingResponse(a,{rejectWith:f})}catch{}return this._logger.error(f,"Failed to postMessage to new worker"),s}return this._logger.error(f,"Failed to postMessage to new worker"),!1}}if(this.taskQueueEnabled){const u=this._prepareForTransfer(e,n,t),f=this._queuePolicy;if(f==="reject")return o&&a?(this._cleanupPendingResponse(a,{rejectWith:new Error("postMessage rejected by queue policy")}),s):!1;if(f==="drop-newest"&&this.queue.length>0)return o&&a?(this._cleanupPendingResponse(a,{rejectWith:new Error("postMessage rejected by queue policy")}),s):!1;if(f==="drop-oldest"&&this.queue.length>0){const g=this.queue.shift();g&&g.correlationId!=null&&this._cleanupPendingResponse(g.correlationId,{rejectWith:new Error("postMessage queued task dropped by policy")})}const p={message:u.message,transfer:u.transfer};o&&a&&(p.correlationId=a),this.queue.push(p);try{if(Number.isFinite(this._queueHighThreshold)&&this.queue.length>this._queueHighThreshold&&!this._queueHighCrossed){this._queueHighCrossed=!0;try{this._bus.emit("pool:queue:high",{length:this.queue.length,threshold:this._queueHighThreshold})}catch(g){this._logger.error(g,"pool queue high listener error")}}}catch{}return this._updateIdleState(),o?s:!0}if(!this.workers.length)return o?s:!1;const l=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;const c=this.workers[l];try{const u=_(),f=this._prepareForTransfer(e,n);return f.transfer&&f.transfer.length?c.worker.postMessage(f.message,f.transfer):c.worker.postMessage(f.message),c._startTimes&&typeof c._startTimes.push=="function"&&c._startTimes.push(u),c.tasks++,this._activeTasks++,c.lastActive=u,this._updateIdleState(),o?s:!0}catch(u){if(o&&a){try{this._cleanupPendingResponse(a,{rejectWith:u})}catch{}return this._logger.error(u,"Failed to postMessage to fallback worker"),s}return this._logger.error(u,"Failed to postMessage to fallback worker"),!1}}_generateCorrelationId(){try{if(typeof globalThis<"u"&&globalThis.crypto&&typeof globalThis.crypto.randomUUID=="function")return globalThis.crypto.randomUUID()}catch{}try{if(typeof globalThis<"u"&&globalThis.crypto&&typeof globalThis.crypto.getRandomValues=="function"){const n=new Uint8Array(16);return globalThis.crypto.getRandomValues(n),Array.from(n).map(t=>t.toString(16).padStart(2,"0")).join("")}}catch{}const e=Math.floor(Math.random()*4294967295).toString(16);return`cid-${Date.now().toString(36)}-${e}`}_cleanupPendingResponse(e,n={}){const t=e!=null?String(e):e,r=this._pendingResponses.get(t);if(!r)return!1;try{if(r.timer)try{clearTimeout(r.timer)}catch{}}catch{}try{Object.prototype.hasOwnProperty.call(n,"resolveWith")?r.resolve(n.resolveWith):Object.prototype.hasOwnProperty.call(n,"rejectWith")&&r.reject(n.rejectWith)}catch{}finally{try{this._pendingResponses.delete(t)}catch{}}return!0}broadcast(e,n){const t=_();let r=null;const i=e!==null&&typeof e=="object"&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer);for(const o of this.workers)try{let a=e,s=n;if(!s&&i)try{r==null&&(r=this._encodeForTransfer(e));const l=r.slice();a=l,s=[l.buffer]}catch{a=e,s=void 0}s&&s.length?o.worker.postMessage(a,s):o.worker.postMessage(a),o._startTimes&&typeof o._startTimes.push=="function"&&o._startTimes.push(t),o.tasks++,this._activeTasks++,o.lastActive=t}catch(a){this._logger.error(a,"broadcast error")}this._updateIdleState()}stopThePress(e,n,t){const r=t&&typeof t.recreateWorkers<"u"?!!t.recreateWorkers:!0,i=t&&typeof t=="object"?Object.assign({},t):void 0;i&&delete i.recreateWorkers;try{this.queue&&typeof this.queue.clear=="function"&&this.queue.clear()}catch(s){this._logger.error(s,"stopThePress: failed to clear queue")}try{for(const[s]of this._pendingResponses)try{this._cleanupPendingResponse(s,{rejectWith:new Error("stopThePress: cancelled pending response")})}catch{}}catch(s){this._logger.error(s,"stopThePress: failed to cancel pending responses")}const o=this.workers.length,a=this.workers.map(s=>s&&s.id).filter(s=>s!=null);try{for(let s=this.workers.length-1;s>=0;s--){const l=this.workers[s];this._terminatedWorkerTaskCountsTotal+=l.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;try{l.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(l)}this.workers.length=0,this._activeTasks=0}catch(s){this._logger.error(s,"stopThePress: failed while terminating workers")}if(r||this._clearLifecycleIntervals(),r){const s=Math.max(this.minSize,Math.min(o,this.maxSize));for(let l=0;l<s;l++)this._addWorkerInstance();try{this._ensureReaper()}catch{}}try{a&&a.length&&this._bus.emit("pool:scale",{action:"remove",terminated:a,count:o})}catch(s){this._logger.error(s,"pool scale stopThePress listener error")}return this._updateIdleState(),this.postMessage(e,n,i)}postMessageBatch(e,n){if(!Array.isArray(e))throw new Error("postMessageBatch expects an array of {message, transfer?}");const t=!!(n&&(n.awaitResponse||n.correlationId!=null)),r=n&&typeof n.correlationIdFactory=="function"?n.correlationIdFactory:null;if(t){if(n&&n.correlationId!=null&&e.length>1&&!r)throw new Error("postMessageBatch cannot use a fixed correlationId for multiple items; provide options.correlationIdFactory or omit correlationId");const u=new Array(e.length);for(let f=0;f<e.length;f++){const p=e[f]||{},g=Object.assign({},n);r&&(g.correlationId=String(r(f,p))),u[f]=this.postMessage(p.message,p.transfer,g)}return u}const i=new Array(e.length),o=[],a=n&&n.workerId!=null?n.workerId:null,s=this.prepareBuffers(e,{clone:!0,zeroCopy:n&&!!n.zeroCopy});let l=null;if(a!=null){if(l=this.workers.find(u=>u.id===a),!l)return e.map(()=>!1)}else l=this._findLeastLoadedWorker();let c=!1;for(let u=0;u<e.length;u++){const f=e[u]||{},p=s[u]||{message:f.message,transfer:f.transfer};let g=!1;l&&l.tasks>=this._maxTasksPerWorker&&(l=null);let m=l;if(!m&&a==null&&(m=this._findLeastLoadedWorker()),m&&m.tasks<this._maxTasksPerWorker)try{const d=_();p.transfer&&p.transfer.length?m.worker.postMessage(p.message,p.transfer):m.worker.postMessage(p.message),m._startTimes&&typeof m._startTimes.push=="function"&&m._startTimes.push(d),m.tasks++,this._activeTasks++,m.lastActive=d,c=!0,i[u]=!0,g=!0,l=m.tasks<this._maxTasksPerWorker?m:null}catch{i[u]=!1,g=!0}if(!g&&a==null&&this.workers.length<this.maxSize)try{const d=this._addWorkerInstance(),y=_();p.transfer&&p.transfer.length?d.worker.postMessage(p.message,p.transfer):d.worker.postMessage(p.message),d._startTimes&&typeof d._startTimes.push=="function"&&d._startTimes.push(y),d.tasks++,this._activeTasks++,d.lastActive=y,c=!0,i[u]=!0,g=!0,l=d.tasks<this._maxTasksPerWorker?d:null}catch{i[u]=!1,g=!0}if(!g){if(a!=null){i[u]=!1;continue}if(this.taskQueueEnabled){const d=this._queuePolicy;d==="reject"||d==="drop-newest"&&this.queue.length>0?i[u]=!1:(d==="drop-oldest"&&this.queue.length>0&&this.queue.shift(),o.push({message:p.message,transfer:p.transfer}),i[u]=!0)}else if(!this.workers.length)i[u]=!1;else{const d=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;const y=this.workers[d];try{const w=_();p.transfer&&p.transfer.length?y.worker.postMessage(p.message,p.transfer):y.worker.postMessage(p.message),y._startTimes&&typeof y._startTimes.push=="function"&&y._startTimes.push(w),y.tasks++,this._activeTasks++,y.lastActive=w,c=!0,i[u]=!0}catch(w){i[u]=!1,this._logger.error(w,"Failed to postMessage to fallback worker")}}}}if(o.length)try{this.queue.pushMany(o),c=!0}catch(u){this._logger.error(u,"postMessageBatch: failed to enqueue prepared items")}return c&&this._updateIdleState(),i}stopThePressBatch(e,n){const t=n&&typeof n.recreateWorkers<"u"?!!n.recreateWorkers:!0,r=n&&typeof n=="object"?Object.assign({},n):void 0;r&&delete r.recreateWorkers;try{this.queue&&typeof this.queue.clear=="function"&&this.queue.clear()}catch(o){this._logger.error(o,"stopThePressBatch: failed to clear queue")}try{for(const[o]of this._pendingResponses)try{this._cleanupPendingResponse(o,{rejectWith:new Error("stopThePressBatch: cancelled pending response")})}catch{}}catch(o){this._logger.error(o,"stopThePressBatch: failed to cancel pending responses")}const i=this.workers.length;try{for(let o=this.workers.length-1;o>=0;o--){const a=this.workers[o];this._terminatedWorkerTaskCountsTotal+=a.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;try{a.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(a)}this.workers.length=0,this._activeTasks=0}catch(o){this._logger.error(o,"stopThePressBatch: failed while terminating workers")}if(t||this._clearLifecycleIntervals(),t){const o=Math.max(this.minSize,Math.min(i,this.maxSize));for(let a=0;a<o;a++)this._addWorkerInstance();try{this._ensureReaper()}catch{}}this._updateIdleState();try{return this.postMessageBatch(e,r)}catch(o){try{this._logger.error(o,"stopThePressBatch: postMessageBatch failed")}catch{}try{return new Array(e?e.length:0).fill(!1)}catch{return[]}}}addWorker(){return this._addWorkerInstance()}removeWorker(){const e=this.workers.pop();if(e){this._decrementActiveTasks(e.tasks||0);try{e.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(e),this._terminatedWorkerTaskCountsTotal+=e.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1}}_reapIdleWorkers(){if(this.idleTimeout<=0)return;const e=_();for(let n=this.workers.length-1;n>=0;n--){const t=this.workers[n];if(this.workers.length<=this.minSize)break;if(t.tasks===0&&e-(t.lastActive||0)>this.idleTimeout){try{t.worker.terminate()}catch{}try{const i=t.worker&&t.worker._underlying;i&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(i)}catch{}const r=this.workers.length-1;n===r?this.workers.pop():this.workers[n]=this.workers.pop()}}this._updateIdleState()}_autoScaleTick(){try{if(!this._autoScale||!this._autoScale.enabled)return;const e=_(),n=this._autoScale;this._lastAutoScaleAt&&n.backoffResetMs&&e-this._lastAutoScaleAt>n.backoffResetMs&&(this._autoScaleBackoffMultiplier=1);const t=Math.floor((n.cooldownMs||0)*(this._autoScaleBackoffMultiplier||1));if(this._lastAutoScaleAt&&e-this._lastAutoScaleAt<t)return;const r=n.targetMs,i=n.hysteresis||.2,o=this._ewmaLatency,a=this.workers.length,s=r*(1+i),l=o!=null?o>s:!1,c=this.queue.length>Math.ceil(a*(1+i));if(l||c){if(a<this.maxSize)try{const p=Math.min(this.maxSize-a,n.stepUp||1);for(let g=0;g<p;g++)this._addWorkerInstance();this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min(n.backoffMaxMultiplier||8,Math.max(1,(this._autoScaleBackoffMultiplier||1)*(n.backoffFactor||1)))}catch(p){this._debugLog&&this._debugLog(p,"autoScale: addWorker failed")}return}const u=r*Math.max(0,1-i);if((o!=null?o<u:!1)&&this.queue.length===0&&a>this.minSize)try{const p=Math.min(a-this.minSize,n.stepDown||1);for(let g=0;g<p;g++){const m=this.workers.pop();if(m){try{m.worker.terminate()}catch(d){this._debugLog&&this._debugLog(d,"autoScale: terminate worker")}this._deleteWorkerUnderlyingMapping(m)}}this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min(n.backoffMaxMultiplier||8,Math.max(1,(this._autoScaleBackoffMultiplier||1)*(n.backoffFactor||1)))}catch(p){this._debugLog&&this._debugLog(p,"autoScale: remove worker failed")}}catch(e){this._debugLog&&this._debugLog(e,"autoScaleTick outer")}}_emitIdle(){const e={data:{type:"pool:idle",stats:this.getStats()}};if(this._isIdle=!0,this._onmessage)try{this._onmessage(e)}catch(n){this._logger.error(n,"Pool onmessage handler error")}if(this._onidle)try{this._onidle(e)}catch(n){this._logger.error(n,"Pool onidle handler error")}try{this._bus.emit("message",e)}catch(n){this._logger.error(n,"pool listener error")}try{this._bus.emit("idle",e)}catch(n){this._logger.error(n,"pool idle listener error")}}_updateIdleState(){const e=this.queue.length===0,t=this._activeTasks===0&&e;t&&!this._isIdle?this._emitIdle():!t&&this._isIdle&&(this._isIdle=!1)}terminate(){try{this.shutdown()}catch{}}[Symbol.dispose](){this.terminate()}async[Symbol.asyncDispose](){try{await this.drain()}catch{}this.terminate()}getStats(){const e=this.workers.map(w=>({id:w.id,tasks:w.tasks,lastActive:w.lastActive})),n=_(),t=this._createdAt!=null?Math.max(0,n-this._createdAt):0,r=this._totalWorkersCreated||this.workers.length,i=this._totalTasksCompleted||0,o=this._terminatedWorkerTaskCountsCount||0,a=this._terminatedWorkerTaskCountsTotal||0;let s=0;for(const w of this.workers)s+=w.completedTasks||0;const l=this.workers.length||0,c=o+l,u=c>0?(a+s)/c:0;let f=0,p=0,g=0,m=0,d=0;const y=this._taskDurationsWelfordCount||0;if(y>0){f=this._taskDurationsMin===Number.POSITIVE_INFINITY?0:this._taskDurationsMin,p=this._taskDurationsMax===Number.NEGATIVE_INFINITY?0:this._taskDurationsMax,g=this._taskDurationsWelfordMean;const w=y>1?this._taskDurationsWelfordM2/y:0;m=Math.sqrt(w),d=0}return{status:e,performance:{poolLiveDuration:t,totalWorkersCreated:r,totalTasksPerformed:i,averageTasksPerWorkerUntilTermination:u,timePerTask:{max:p,min:f,average:g,stddev:m},percentSlowTasks:d},queueLength:this.queue.length,activeTasks:this._activeTasks,workerCount:this.workers.length,minSize:this.minSize,maxSize:this.maxSize,isIdle:this._activeTasks===0&&this.queue.length===0}}drain(){const e=this.queue.length===0;return this._activeTasks===0&&e?Promise.resolve(this.getStats()):new Promise(r=>{const i=()=>{try{this.removeEventListener("idle",i)}catch{}r(this.getStats())};this.addEventListener("idle",i)})}addEventListener(e,n){if(typeof n=="function"&&(this._bus.on(e,n),e==="idle")){const t=this.queue.length===0;if(this._activeTasks===0&&t){const i={data:{type:"pool:idle",stats:this.getStats()}};try{n(i)}catch(o){this._logger.error(o,"pool idle listener error")}}}}removeEventListener(e,n){!n||typeof n!="function"||this._bus.off(e,n)}get onresize(){return this._onresize}set onresize(e){this._onresize=e}get onmessage(){return this._onmessage}set onmessage(e){this._onmessage=e}get onerror(){return this._onerror}set onerror(e){this._onerror=e}get onidle(){return this._onidle}set onidle(e){if(this._onidle=e,typeof e=="function"){const n=this.queue.length===0;if(this._activeTasks===0&&n){const r={data:{type:"pool:idle",stats:this.getStats()}};try{e(r)}catch(i){this._logger.error(i,"Pool onidle handler error")}}}}pauseQueue(){this._queuePaused=!0}resumeQueue(){this._queuePaused&&(this._queuePaused=!1,this._dispatchQueuedTasks())}pause(){return this.pauseQueue()}resume(){return this.resumeQueue()}get queuePaused(){return this._queuePaused}_dispatchQueuedTasks(){if(this._queuePaused||!this.taskQueueEnabled||this.queue.length===0)return;const e=_();let n=!1;for(const t of this.workers)for(;this.queue.length>0&&t.tasks<this._maxTasksPerWorker;){const r=this.queue.shift();try{r.transfer&&r.transfer.length?t.worker.postMessage(r.message,r.transfer):t.worker.postMessage(r.message),t._startTimes&&typeof t._startTimes.push=="function"&&t._startTimes.push(e),t.tasks++,this._activeTasks++,t.lastActive=e,n=!0}catch(i){this._debugLog&&this._debugLog(i,"dispatch queued message to worker failed"),this._logger.error(i,"Failed to dispatch queued message to worker");break}}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1),n&&this._updateIdleState()}}class ${constructor({map:e,source:n,sourceLayer:t,fid:r="id",tileSize:i=512,tolerance:o=1e-5,cacheSize:a=5e3,units:s="meters",tilePoolSize:l=6,gatherPoolSize:c=4,tileWorkerSource:u=null,gatherWorkerSource:f=null}){this.map=e,this.source=n,this.sourceLayer=t,this.fid=r,this.tileSize=i,this.tolerance=o,this.units=s,this._sourceLoaded=!1,this._pendingTiles=new Set,this._tileQueue=new E(32),this._tileDrainScheduled=!1,this._gatherScheduled=!1,this._diffScheduled=!1,this._diffAdd=new Map,this._diffRemove=new Set,this._bus=new C,this.piecesCache=new P({maxEntries:a,maxWeight:a*5e3,weightFn:m=>m.size||0}),this.labelsCache=new P({maxEntries:a,maxWeight:a*5e3,weightFn:m=>Array.isArray(m)?m.length:0});const p=u,g=f;this.tilePool=new R(p,{size:l,minSize:1,maxSize:l,taskQueue:!0,lazy:!1}),this.gatherPool=new R(g,{size:c,minSize:1,maxSize:c,taskQueue:!0,lazy:!1}),this.tilePool.addEventListener("message",m=>this._onTileMessage(m)),this.tilePool.addEventListener("idle",()=>{this._sourceLoaded&&this._scheduleGather()}),this.gatherPool.addEventListener("message",m=>this._onGatherMessage(m)),this.gatherPool.addEventListener("idle",()=>this._scheduleDiffFlush()),this._bus.on("label",m=>this._collectLabelDiff(m)),this._bus.on("commit",()=>this._scheduleDiffFlush())}handleSourceData(e){if(!e||e.sourceId!==this.source.id)return;e.isSourceLoaded&&(this._sourceLoaded=!0);const n=e.tile?.tileID?.canonical;if(!n)return;const t=`${n.z}|${n.x}|${n.y}`;if(this.piecesCache.has(t)||this._pendingTiles.has(t))return;let r=[];const i=this.source.type==="vector"?{sourceLayer:this.sourceLayer}:{},o=typeof e.tile?.querySourceFeatures=="function"?e.tile.querySourceFeatures.bind(e.tile):typeof this.map.querySourceFeatures=="function"?this.map.querySourceFeatures.bind(this.map):null;if(!o)return;const a=o(r,i);if(Array.isArray(a)&&(r=a),!r.length)return;const s=this.tolerance*Math.pow(10,-.301*n.z+5.19),l={collection:{type:"FeatureCollection",features:r.map((c,u)=>({id:c.properties?.[this.fid]??c.id,geometry:c.geometry,properties:{...c.properties,_index:`${t}|${u}`,_tile:t,_group:c.properties?.[this.fid]}}))},tolerance:s,unique:t,tileSize:this.tileSize};this._pendingTiles.add(t),this._tileQueue.push(l),this._scheduleTileDrain()}setGeoJsonSource(e){this.gjSource=e}dispose(){try{this.tilePool.shutdown()}catch{}try{this.gatherPool.shutdown()}catch{}this.piecesCache.clear(),this.labelsCache.clear(),this._tileQueue.clear(),this._diffQueue?.clear?.(),this._bus.clear()}_scheduleTileDrain(){this._tileDrainScheduled||(this._tileDrainScheduled=!0,queueMicrotask(()=>{this._tileDrainScheduled=!1,this._drainTileQueue()}))}_drainTileQueue(){const e=[];let n;for(;(n=this._tileQueue.shift())!==void 0;)e.push({message:n});e.length>0&&this.tilePool.postMessageBatch(e)}_onTileMessage(e){const n=this._normalizeWorkerMessage(e.data);if(!n||n.type!=="simplified")return;const{unique:t,type:r,...i}=n;this._pendingTiles.delete(t),this.piecesCache.set(t,i),this._sourceLoaded&&this._scheduleGather()}_scheduleGather(){this._gatherScheduled||(this._gatherScheduled=!0,queueMicrotask(()=>{this._gatherScheduled=!1,this._dispatchGather()}))}_dispatchGather(){const e=Array.from(this.piecesCache.entries("LRU"));if(!e.length)return;const n=Object.fromEntries(e);this.gatherPool.postMessage({pieces:n,tolerance:this.tolerance,unit:this.units,tileSize:this.tileSize})}_onGatherMessage(e){const n=this._normalizeWorkerMessage(e.data);if(n){if(n.type==="commit"){this._bus.emit("commit");return}n.id!=null&&this._bus.emit("label",n)}}_collectLabelDiff(e){const n=e.id,t=Array.isArray(e.features)?e.features:[];if(this.labelsCache.hasEqual(n,t))return;const r=this.labelsCache.get(n);r&&r.forEach(i=>{i?.properties?._index&&this._diffRemove.add(i.properties._index)}),t.forEach(i=>{i?.properties?._index&&this._diffAdd.set(i.properties._index,i)}),this.labelsCache.set(n,t)}_scheduleDiffFlush(){this._diffScheduled||(this._diffScheduled=!0,queueMicrotask(()=>{this._diffScheduled=!1,this._flushDiffs()}))}_flushDiffs(){if(!this.gjSource||this._diffAdd.size===0&&this._diffRemove.size===0)return;const e=[...this._diffAdd.values()],n=[...this._diffRemove];this._diffAdd.clear(),this._diffRemove.clear(),this.gjSource.updateData({add:e,remove:n})}_normalizeWorkerMessage(e){return e instanceof ArrayBuffer||ArrayBuffer.isView(e)?M(e):e}}const N=`let v, T;
+function F() {
+  return v !== void 0 ? v === !1 ? null : v : typeof TextEncoder < "u" ? (v = new TextEncoder(), v) : typeof Buffer < "u" && typeof Buffer.from == "function" ? (v = { encode: (i) => new Uint8Array(Buffer.from(i)) }, v) : (v = !1, null);
+}
+function U() {
+  return T !== void 0 ? T === !1 ? null : T : typeof TextDecoder < "u" ? (T = new TextDecoder(), T) : typeof Buffer < "u" && typeof Buffer.from == "function" ? (T = { decode: (i) => Buffer.from(i).toString("utf8") }, T) : (T = !1, null);
+}
+const L = (i) => {
+  if (i instanceof Uint8Array) return i;
+  if (ArrayBuffer.isView(i)) return new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
+  if (i instanceof ArrayBuffer) return new Uint8Array(i);
+  const e = JSON.stringify(i), t = F();
+  if (t && typeof t.encode == "function") return t.encode(e);
   throw new Error("No TextEncoder or Buffer available to encode object");
-}, E = (e) => {
-  let n;
-  if (e instanceof Uint8Array) n = e;
-  else if (ArrayBuffer.isView(e)) n = new Uint8Array(e.buffer, e.byteOffset, e.byteLength);
-  else if (e instanceof ArrayBuffer) n = new Uint8Array(e);
-  else {
-    if (typeof Buffer > "u" || typeof Buffer.isBuffer != "function" || !Buffer.isBuffer(e)) throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");
-    n = new Uint8Array(e);
-  }
-  const t = m !== void 0 ? m === !1 ? null : m : typeof TextDecoder < "u" ? m = new TextDecoder() : typeof Buffer < "u" && typeof Buffer.from == "function" ? m = { decode: (o) => Buffer.from(o).toString("utf8") } : (m = !1, null);
-  if (t && typeof t.decode == "function") return JSON.parse(t.decode(n));
-  if (typeof TextDecoder < "u") return JSON.parse(new TextDecoder().decode(n));
+}, W = (i) => {
+  let e;
+  if (i instanceof Uint8Array) e = i;
+  else if (ArrayBuffer.isView(i)) e = new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
+  else if (i instanceof ArrayBuffer) e = new Uint8Array(i);
+  else if (typeof Buffer < "u" && typeof Buffer.isBuffer == "function" && Buffer.isBuffer(i))
+    e = new Uint8Array(i);
+  else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");
+  const t = U();
+  if (t && typeof t.decode == "function") return JSON.parse(t.decode(e));
+  if (typeof TextDecoder < "u") return JSON.parse(new TextDecoder().decode(e));
   throw new Error("No TextDecoder or Buffer available to decode object");
-}, C = null;
-if (typeof process < "u" && process.hrtime && typeof process.hrtime.bigint == "function") try {
-  const e = Number(process.hrtime.bigint() / 1000000n);
-  C = Date.now() - e;
-} catch {
-  C = null;
+};
+class D {
+  /**
+   * Create a PowerCache.
+   * @param {Object} [options]
+   * @param {number} [options.maxEntries=Infinity] Maximum number of entries.
+   * @param {number} [options.maxWeight=Infinity] Maximum total weight across entries.
+   * @param {function(*):number} [options.weightFn] Function to compute weight for a value.
+   * @param {number} [options.defaultTTL=60000] Default TTL (ms) for entries.
+   * @param {number} [options.maxPoolSize=1000] Maximum node pool size for reuse.
+   * @param {boolean} [options.rejectOversized=false] If true, inserting an item whose weight > \`maxWeight\` will be rejected.
+   * @param {function(*, *, string):void} [options.onEvict] Callback invoked when an item is evicted/deleted/rejected. Called as \`(key, value, reason)\` where reason is \`'evicted'|'deleted'|'rejected-oversized'\`.
+   * @param {function(*, *):void} [options.onExpire] Callback invoked when an item expires. Called as \`(key, value)\`.
+   * @param {number} [options.initialPoolSize=0] Prefill the internal node pool with this many nodes (capped by \`maxPoolSize\`).
+   * @param {number} [options.maxCleanupPerTick=100] Default max nodes scanned per cleanup tick when running \`startCleanup()\`.
+   * @param {boolean} [options.eagerCleanupOnRead=false] If true, \`peek()\` and \`has()\` will eagerly remove expired nodes when observed.
+   */
+  constructor({
+    maxEntries: e = 1 / 0,
+    maxWeight: t = 1 / 0,
+    weightFn: n = () => 1,
+    defaultTTL: r = 6e4,
+    maxPoolSize: l = 1e3,
+    rejectOversized: u = !1,
+    onEvict: o = null,
+    onExpire: s = null,
+    initialPoolSize: a = 0,
+    maxCleanupPerTick: f = 100,
+    eagerCleanupOnRead: h = !1
+  } = {}) {
+    this.maxEntries = e, this.maxWeight = t, this.weightFn = n, this.defaultTTL = r, this.maxPoolSize = l, this.rejectOversized = !!u, this.onEvict = typeof o == "function" ? o : null, this.onExpire = typeof s == "function" ? s : null, this.maxCleanupPerTick = Number.isFinite(+f) ? Math.max(1, +f) : 100, this.eagerCleanupOnRead = !!h, this.map = /* @__PURE__ */ new Map(), this.head = null, this.tail = null, this.pool = [];
+    for (let m = 0; m < Math.min(a || 0, this.maxPoolSize); m++)
+      this.pool.push({ key: null, value: null, weight: 0, expiresAt: 0, prev: null, next: null });
+    this.currentWeight = 0, this.hits = 0, this.misses = 0, this.evictions = 0, this.rejected = 0, this.expirations = 0, this._cleanupTimer = null, this._cleanupRunning = !1, this._cleanupParams = null, this._cleanupCursor = null, this._cleanupCursorValid = !1, this._inflightPromises = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Allocate a pool node or create a new one.
+   *
+   * This helper either reuses a node from the internal \`pool\` or creates a
+   * fresh node object. The returned node is initialized with the provided
+   * key/value/weight/expiresAt and has its \`prev\`/\`next\` pointers nulled.
+   *
+   * @private
+   * @param {*} key
+   * @param {*} value
+   * @param {number} weight
+   * @param {number} expiresAt
+   * @returns {CacheNode}
+   */
+  _allocNode(e, t, n, r) {
+    const l = this.pool.pop() || {
+      key: null,
+      value: null,
+      weight: 0,
+      expiresAt: 0,
+      prev: null,
+      next: null
+    };
+    return l.key = e, l.value = t, l.weight = n || 0, l.expiresAt = r || 0, l.prev = null, l.next = null, l;
+  }
+  /**
+   * Reset and return a node to the pool for reuse.
+   *
+   * This helper clears the node fields and returns it to the node pool when
+   * the pool has capacity. It is called for evicted or deleted nodes to
+   * reduce allocation churn.
+   *
+   * @private
+   * @param {CacheNode} node
+   * @returns {void}
+   */
+  _freeNode(e) {
+    e.key = null, e.value = null, e.weight = 0, e.expiresAt = 0, e.prev = null, e.next = null, this.pool.length < this.maxPoolSize && this.pool.push(e);
+  }
+  /**
+   * Remove a node that has expired.
+   *
+   * Performs map deletion, linked-list unlink, invokes \`onExpire\`, returns the
+   * node to the pool, and updates bookkeeping counters (\`misses\` and
+   * \`expirations\`). This helper is called from several expiration paths and
+   * centralizes the necessary cleanup steps.
+   *
+   * @private
+   * @param {CacheNode} node
+   * @param {number} now - Current timestamp (ms) used for comparisons
+   * @param {boolean} [countMiss=false] - When true, increment the \`misses\` counter for user-facing lookups.
+   */
+  _removeExpiredNode(e, t, n = !1) {
+    if (!e || !e.expiresAt || e.expiresAt > t) return !1;
+    const r = e.key, l = e.value, u = e.next;
+    this.map.delete(r), this.currentWeight -= e.weight || 0, this._cleanupCursor === e && (this._cleanupCursor = u), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(e);
+    try {
+      this.onExpire && this.onExpire(r, l);
+    } catch {
+    }
+    return this._freeNode(e), n && this.misses++, this.expirations++, !0;
+  }
+  /**
+   * Fetch a node and validate expiry.
+   * @private
+   * @param {*} key
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @param {boolean} [options.countMiss=false]
+   * @returns {CacheNode|null}
+   */
+  _fetchValidNode(e, { ignoreExpiry: t = !1, countMiss: n = !1, allowExpired: r = !1 } = {}) {
+    const l = this.map.get(e);
+    return l ? !t && l.expiresAt && l.expiresAt <= Date.now() ? r ? l : (this._removeExpiredNode(l, Date.now(), n), null) : l : (n && this.misses++, null);
+  }
+  /**
+   * Start a background refresh for an expired entry.
+   *
+   * If a refresh is already in flight for the key, this helper does nothing.
+   * The refreshed value is written back to cache when the factory resolves.
+   * Errors are swallowed so the stale value remains available.
+   *
+   * @private
+   * @param {*} key
+   * @param {Function} factory
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @returns {void}
+   */
+  _refreshStaleEntry(e, t, { ttl: n = void 0, weight: r = void 0 } = {}) {
+    if (this._inflightPromises.has(e)) return;
+    let l;
+    try {
+      l = Promise.resolve().then(() => t());
+    } catch {
+      return;
+    }
+    const u = l.then(
+      (o) => {
+        try {
+          this.set(e, o, { ttl: n, weight: r });
+        } catch {
+        }
+        return this._inflightPromises.delete(e), o;
+      },
+      (o) => {
+        this._inflightPromises.delete(e);
+      }
+    );
+    this._inflightPromises.set(e, u);
+  }
+  /**
+   * Append a node to the tail (mark it most-recently used).
+   * This updates the linked-list pointers appropriately and is used when
+   * inserting new nodes or promoting a node to MRU.
+   *
+   * @private
+   * @param {CacheNode} node - Node to append at the tail.
+   * @returns {void}
+   */
+  _append(e) {
+    if (!this.tail) {
+      this.head = this.tail = e;
+      return;
+    }
+    e.prev = this.tail, e.next = null, this.tail.next = e, this.tail = e;
+  }
+  /**
+   * Remove a node from the linked list without freeing it. The node's
+   * \`prev\`/\`next\` references are updated on neighbors and the node's links
+   * are nulled. Does not modify \`this.map\` or bookkeeping counters; callers
+   * are responsible for those actions.
+   *
+   * @private
+   * @param {CacheNode} node - Node to unlink from the list.
+   * @returns {void}
+   */
+  _remove(e) {
+    const t = e.prev, n = e.next;
+    t ? t.next = n : this.head = n, n ? n.prev = t : this.tail = t, e.prev = e.next = null;
+  }
+  /**
+   * Move an existing node to the tail (mark as most-recently used).
+   * Implemented as an unlink followed by an append. No-op when node is
+   * already the tail.
+   *
+   * @private
+   * @param {CacheNode} node - Node to promote to MRU position.
+   * @returns {void}
+   */
+  _moveToTail(e) {
+    this.tail !== e && (this._remove(e), this._append(e));
+  }
+  /**
+   * Evict nodes from the head (least-recently used) until the cache
+   * satisfies both \`maxEntries\` and \`maxWeight\` constraints. For each
+   * evicted node \`onEvict\` is invoked if provided and the node is returned
+   * to the node pool via \`_freeNode\`.
+   *
+   * @private
+   * @returns {void}
+   */
+  _evictIfNeeded() {
+    for (; this.map.size > this.maxEntries || this.currentWeight > this.maxWeight; ) {
+      const e = this.head;
+      if (!e) break;
+      const t = e.next, n = e.key, r = e.value;
+      this._cleanupCursor === e && (this._cleanupCursor = t), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(e), this.map.delete(n), this.currentWeight -= e.weight || 0, this.evictions++;
+      try {
+        this.onEvict && this.onEvict(n, r, "evicted");
+      } catch {
+      }
+      this._freeNode(e);
+    }
+  }
+  /**
+   * Set a value in the cache (add or update).
+   * Marks the entry as most-recently used.
+   * If \`rejectOversized\` is enabled and the computed/explicit weight exceeds \`maxWeight\`,
+   * the insertion will be rejected and \`set\` returns \`false\` (otherwise returns \`this\`).
+   * @param {*} key - Cache key
+   * @param {*} value - Value to store
+   * @param {Object} [options]
+   * @param {number} [options.ttl] - Time-to-live in ms. Use \`null\` or \`Infinity\` to disable expiration.
+   * @param {number} [options.weight] - Optional explicit weight for the entry. If omitted, \`weightFn\` is used.
+   * @returns {this|false} \`this\` on success, or \`false\` when insertion was rejected due to oversize.
+   */
+  set(e, t, { ttl: n = this.defaultTTL, weight: r = null } = {}) {
+    const l = Date.now(), u = n == null || n === 1 / 0 ? 0 : l + n;
+    let o;
+    if (r != null)
+      o = r;
+    else {
+      try {
+        o = this.weightFn(t);
+      } catch {
+        o = 0;
+      }
+      o == null && (o = 0);
+    }
+    const s = Number.isFinite(+o) ? Math.max(0, +o) : 0;
+    if (this.rejectOversized && Number.isFinite(this.maxWeight) && s > this.maxWeight) {
+      this.rejected++;
+      try {
+        this.onEvict && this.onEvict(e, t, "rejected-oversized");
+      } catch {
+      }
+      return !1;
+    }
+    if (this.map.has(e)) {
+      const a = this.map.get(e);
+      this.currentWeight -= a.weight || 0, a.value = t, a.weight = s, a.expiresAt = u, this.currentWeight += a.weight || 0, this._moveToTail(a);
+    } else {
+      const a = this._allocNode(e, t, s, u);
+      this.map.set(e, a), this._append(a), this.currentWeight += a.weight || 0, this._evictIfNeeded();
+    }
+    return this;
+  }
+  /**
+   * Retrieve a value and mark it as recently used.
+   * @param {*} key
+   * @returns {*|undefined} The stored value or \`undefined\` if missing/expired.
+   */
+  get(e) {
+    const t = this._fetchValidNode(e, { countMiss: !0 });
+    if (t)
+      return this._moveToTail(t), this.hits++, t.value;
+  }
+  /**
+   * Get a value without updating recency.
+   * Returns \`undefined\` for missing or expired entries.
+   * @param {*} key
+   * @returns {*|undefined}
+   */
+  peek(e) {
+    const t = this._fetchValidNode(e);
+    return t ? t.value : void 0;
+  }
+  /**
+   * Check membership without affecting recency.
+   * @param {*} key
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false] If true, consider expired entries as present.
+   * @returns {boolean}
+   */
+  has(e, { ignoreExpiry: t = !1 } = {}) {
+    return !!this._fetchValidNode(e, { ignoreExpiry: t });
+  }
+  /**
+   * Atomically read-or-compute a value for \`key\`.
+   * If the key is present and not expired the stored value is returned.
+   * Otherwise \`factory\` is invoked to produce the value which is stored
+   * in the cache and returned. \`factory\` may be a value (in which case it
+   * is stored directly) or a function. If the function returns a Promise,
+   * the Promise is returned and the resolved value is stored when it settles.
+   *
+   * Note: this method does not deduplicate concurrent async factories —
+   * for async factories prefer \`getOrSetAsync\` or use
+   * \`PowerMemoizer\` for inflight deduplication.
+   *
+   * @param {*} key
+   * @param {Function|*} factory - Function that produces the value or a direct value.
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @param {boolean} [options.staleWhileRevalidate=false] If true, return an expired value immediately and refresh the cache in the background.
+   * @returns {*|Promise<*>}
+   */
+  getOrSet(e, t, { ttl: n = void 0, weight: r = void 0, staleWhileRevalidate: l = !1 } = {}) {
+    const u = Date.now(), o = this._fetchValidNode(e, {
+      countMiss: !1,
+      allowExpired: l
+    });
+    if (o)
+      if (o.expiresAt && o.expiresAt <= u) {
+        if (typeof t == "function")
+          return this._moveToTail(o), this.hits++, this._refreshStaleEntry(e, t, { ttl: n, weight: r }), o.value;
+        this._removeExpiredNode(o, u, !0);
+      } else
+        return this._moveToTail(o), this.hits++, o.value;
+    else
+      this.misses++;
+    if (typeof t == "function") {
+      const s = t();
+      return s && typeof s.then == "function" ? s.then((a) => {
+        try {
+          this.set(e, a, { ttl: n, weight: r });
+        } catch {
+        }
+        return a;
+      }) : (this.set(e, s, { ttl: n, weight: r }), s);
+    }
+    return this.set(e, t, { ttl: n, weight: r }), t;
+  }
+  /**
+   * Bulk set multiple entries. Accepts an iterable/array of [key, value] pairs.
+   * Computes weight once per value and applies a single eviction pass at the end.
+   * @param {Iterable<[*,*]>} entries
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @returns {this}
+   */
+  setMany(e, { ttl: t = void 0, weight: n = void 0 } = {}) {
+    const r = Date.now(), l = t == null || t === 1 / 0 ? 0 : r + t;
+    for (const u of e) {
+      if (!u) continue;
+      const [o, s] = u;
+      let a;
+      if (n != null) a = n;
+      else {
+        try {
+          a = this.weightFn(s);
+        } catch {
+          a = 0;
+        }
+        a == null && (a = 0);
+      }
+      const f = Number.isFinite(+a) ? Math.max(0, +a) : 0;
+      if (this.map.has(o)) {
+        const h = this.map.get(o);
+        this.currentWeight -= h.weight || 0, h.value = s, h.weight = f, h.expiresAt = l, this.currentWeight += h.weight || 0, this._moveToTail(h);
+      } else {
+        const h = this._allocNode(o, s, f, l);
+        this.map.set(o, h), this._append(h), this.currentWeight += h.weight || 0;
+      }
+    }
+    return this._evictIfNeeded(), this;
+  }
+  /**
+   * Bulk get multiple keys. Returns a Map of found entries.
+   * @param {Iterable<*>} keys
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @returns {Map}
+   */
+  getMany(e, { ignoreExpiry: t = !1 } = {}) {
+    const n = /* @__PURE__ */ new Map();
+    for (const r of e) {
+      const l = this._fetchValidNode(r, { ignoreExpiry: t, countMiss: !0 });
+      l && (this._moveToTail(l), this.hits++, n.set(r, l.value));
+    }
+    return n;
+  }
+  /**
+   * Touch an entry: update its recency and optionally refresh TTL without
+   * reading or modifying the stored value.
+   * @param {*} key
+   * @param {number} [ttl] - Optional per-call TTL in ms. Use \`null\`/\`Infinity\` to disable expiry.
+   * @returns {boolean} True if the entry existed (and was not expired), false otherwise.
+   */
+  touch(e, t = void 0) {
+    const n = this._fetchValidNode(e);
+    if (!n) return !1;
+    const r = Date.now();
+    return t !== void 0 && (n.expiresAt = t == null || t === 1 / 0 ? 0 : r + t), this._moveToTail(n), !0;
+  }
+  /**
+   * Async read-or-compute with inflight deduplication.
+   * If a factory is already running for \`key\`, returns the same Promise.
+   * Otherwise invokes \`asyncFactory\` and stores the resolved value in cache.
+   * @param {*} key
+   * @param {Function} asyncFactory - Function returning a Promise or value.
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @param {boolean} [options.staleWhileRevalidate=false] If true, return an expired value immediately and refresh the cache in the background.
+   * @returns {Promise<*>}
+   */
+  getOrSetAsync(e, t, { ttl: n = void 0, weight: r = void 0, staleWhileRevalidate: l = !1 } = {}) {
+    if (typeof t != "function")
+      return Promise.resolve(this.getOrSet(e, t, { ttl: n, weight: r }));
+    const u = Date.now(), o = this.map.get(e);
+    if (o)
+      if (o.expiresAt && o.expiresAt <= u) {
+        if (l)
+          return this._moveToTail(o), this.hits++, this._refreshStaleEntry(e, t, { ttl: n, weight: r }), Promise.resolve(o.value);
+        this._removeExpiredNode(o, u, !1);
+      } else
+        return this._moveToTail(o), this.hits++, Promise.resolve(o.value);
+    if (this._inflightPromises.has(e)) return this._inflightPromises.get(e);
+    this.misses++;
+    let s;
+    try {
+      s = Promise.resolve().then(() => t());
+    } catch (f) {
+      return Promise.reject(f);
+    }
+    const a = s.then(
+      (f) => {
+        try {
+          this.set(e, f, { ttl: n, weight: r });
+        } catch {
+        }
+        return this._inflightPromises.delete(e), f;
+      },
+      (f) => {
+        throw this._inflightPromises.delete(e), f;
+      }
+    );
+    return this._inflightPromises.set(e, a), a;
+  }
+  /**
+   * Check membership without affecting recency and verify the stored value is deep-equal
+   * to the provided \`value\`.
+   *
+   * Optimizations:
+   * - Fast reference equality short-circuit
+   * - Fast primitive checks
+   * - Special-cases for Arrays, TypedArrays/ArrayBuffer, Date, RegExp, Map and Set
+   * - WeakMap/WeakSet-based cycle detection
+   *
+   * @param {*} key
+   * @param {*} value
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false] If true, consider expired entries as present.
+   * @param {WeakMap} [options.seen] Optional reusable \`seen\` WeakMap for callers that
+   *        perform many deep-equality checks and want to avoid per-call allocations.
+   * @returns {boolean}
+   */
+  hasEqual(e, t, { ignoreExpiry: n = !1, seen: r = void 0 } = {}) {
+    const l = this._fetchValidNode(e, { ignoreExpiry: n });
+    if (!l) return !1;
+    const u = l.value;
+    return u === t ? !0 : typeof u !== "object" || u === null || typeof t !== "object" || t === null ? u === t : M(u, t, r);
+  }
+  /**
+   * Variant accepting an explicit \`seen\` WeakMap for reuse across many checks.
+   * @param {*} key
+   * @param {*} value
+   * @param {WeakMap} seen
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @returns {boolean}
+   */
+  hasEqualWithSeen(e, t, n, { ignoreExpiry: r = !1 } = {}) {
+    return this.hasEqual(e, t, { ignoreExpiry: r, seen: n });
+  }
+  /**
+   * Delete an entry from the cache.
+   * @param {*} key
+   * @returns {boolean} true if the key was removed.
+   */
+  delete(e) {
+    const t = this.map.get(e);
+    if (!t) return !1;
+    const n = t.next;
+    this.map.delete(e), this.currentWeight -= t.weight || 0, this._cleanupCursor === t && (this._cleanupCursor = n), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(t);
+    try {
+      this.onEvict && this.onEvict(t.key, t.value, "deleted");
+    } catch {
+    }
+    return this._freeNode(t), !0;
+  }
+  /**
+   * Clear the cache and return nodes to the pool.
+   * @returns {void}
+   */
+  clear() {
+    for (let e = this.head; e; ) {
+      const t = e.next;
+      this._freeNode(e), e = t;
+    }
+    this.head = this.tail = null, this.map.clear(), this.currentWeight = 0, this._cleanupCursor = null, this._cleanupCursorValid = !1;
+  }
+  /**
+   * Remove expired entries by scanning from least-recently used to most.
+   * @returns {void}
+   */
+  cleanupExpired() {
+    return this.cleanupExpiredUpTo();
+  }
+  /**
+   * Cleanup expired entries, scanning up to \`maxScan\` nodes.
+   * Scanning resumes from an internal cursor so repeated small passes will cover the list
+   * without repeatedly scanning the head of a very large cache. When the end is reached the
+   * cursor wraps to the head.
+   * @param {number} [maxScan=Infinity] Maximum nodes to scan in this pass.
+   * @returns {number} Number of nodes scanned
+   */
+  cleanupExpiredUpTo(e = 1 / 0) {
+    const t = Date.now();
+    let n = 0, r = this._cleanupCursor && this._cleanupCursorValid ? this._cleanupCursor : this.head;
+    for (; r && n < e; ) {
+      const l = r.next;
+      if (r.expiresAt && r.expiresAt <= t) {
+        const u = r.key, o = r.value;
+        this.map.delete(u), this.currentWeight -= r.weight || 0, this._cleanupCursor === r && (this._cleanupCursor = l), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(r);
+        try {
+          this.onExpire && this.onExpire(u, o);
+        } catch {
+        }
+        this._freeNode(r), this.expirations++;
+      }
+      r = l, n++;
+    }
+    return this._cleanupCursor = r || this.head, this._cleanupCursorValid = !!this._cleanupCursor, n;
+  }
+  /**
+   * Start periodic, non-blocking cleanup.
+   * Accepts either a numeric interval (ms) or an options object \`{ interval, maxCleanupPerTick }\`.
+   * The loop is implemented with \`setTimeout\` and scans up to \`maxCleanupPerTick\` nodes per pass
+   * to avoid long event-loop stalls.
+   * Note: call \`stopCleanup()\` to stop the periodic timer (for example, on application shutdown)
+   * to ensure the internal timer is cleared and resources can be reclaimed.
+   * @param {number|Object} [intervalOrOptions]
+   * @param {number} [intervalOrOptions.interval] Interval between cleanup passes in ms.
+   * @param {number} [intervalOrOptions.maxCleanupPerTick] Max nodes to scan per pass.
+   * @returns {void}
+   */
+  startCleanup(e = {}) {
+    let t, n;
+    typeof e == "number" ? (t = e, n = this.maxCleanupPerTick) : (t = Number.isFinite(+e.interval) ? +e.interval : Math.max(1e3, Math.min(this.defaultTTL || 6e4, 6e4)), n = Number.isFinite(+e.maxCleanupPerTick) ? Math.max(1, +e.maxCleanupPerTick) : this.maxCleanupPerTick), this.stopCleanup(), this._cleanupParams = { interval: t, maxCleanupPerTick: n }, this._cleanupTimer = setTimeout(() => this._cleanupTick(), t);
+  }
+  /**
+   * Stop periodic cleanup.
+   * @returns {void}
+   */
+  stopCleanup() {
+    this._cleanupTimer && (clearTimeout(this._cleanupTimer), this._cleanupTimer = null), this._cleanupRunning = !1, this._cleanupParams = null;
+  }
+  /**
+   * Synchronous disposal hook (TC39 Explicit Resource Management).
+   * Stops any background cleanup and clears the cache.
+   */
+  [Symbol.dispose]() {
+    try {
+      this.stopCleanup();
+    } catch {
+    }
+    try {
+      this.clear();
+    } catch {
+    }
+  }
+  /**
+   * Asynchronous disposal hook. Provided for symmetry with \`using\`/\`await using\`.
+   * Cache cleanup is synchronous so this simply performs the same actions and
+   * returns a resolved Promise for await compatibility.
+   */
+  async [Symbol.asyncDispose]() {
+    try {
+      this.stopCleanup();
+    } catch {
+    }
+    try {
+      this.clear();
+    } catch {
+    }
+  }
+  /**
+   * Prototype tick used by the cleanup timer loop. Separated to avoid
+   * allocating a per-call closure inside \`startCleanup()\`.
+   * @private
+   */
+  _cleanupTick() {
+    if (this._cleanupTimer != null) {
+      if (this._cleanupRunning) {
+        this._cleanupTimer = setTimeout(() => this._cleanupTick(), this._cleanupParams.interval);
+        return;
+      }
+      this._cleanupRunning = !0;
+      try {
+        this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick);
+      } finally {
+        this._cleanupRunning = !1;
+      }
+      this._cleanupTimer = setTimeout(() => this._cleanupTick(), this._cleanupParams.interval);
+    }
+  }
+  /**
+   * Current number of entries in cache.
+   * @returns {number}
+   */
+  get size() {
+    return this.map.size;
+  }
+  /**
+   * Hit rate as a fraction (hits / (hits + misses)).
+   * @returns {number}
+   */
+  get hitRate() {
+    const e = (this.hits || 0) + (this.misses || 0);
+    return e ? this.hits / e : 0;
+  }
+  /**
+   * Return runtime statistics for the cache.
+   * @returns {{size:number, weight:number, hits:number, misses:number, evictions:number, rejected:number, poolSize:number}}
+   */
+  stats() {
+    return {
+      size: this.size,
+      weight: this.currentWeight,
+      hits: this.hits,
+      misses: this.misses,
+      evictions: this.evictions,
+      expirations: this.expirations,
+      rejected: this.rejected,
+      poolSize: this.pool.length
+    };
+  }
+  /**
+   * Resize the cache limits and evict if necessary.
+   * @param {Object} options
+   * @param {number} [options.maxEntries]
+   * @param {number} [options.maxWeight]
+   */
+  resize({ maxEntries: e, maxWeight: t } = {}) {
+    Number.isFinite(+e) && (this.maxEntries = Math.max(0, +e)), Number.isFinite(+t) && (this.maxWeight = Math.max(0, +t)), this._evictIfNeeded();
+  }
+  /**
+   * Iterate entries in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   * @returns {IterableIterator<[*,*]>}
+   */
+  *entries(e = "MRU") {
+    if (e === "MRU")
+      for (let t = this.tail; t; t = t.prev) yield [t.key, t.value];
+    else
+      for (let t = this.head; t; t = t.next) yield [t.key, t.value];
+  }
+  [Symbol.iterator]() {
+    return this.entries("MRU");
+  }
+  /**
+   * Iterate keys in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   */
+  *keys(e = "MRU") {
+    for (const [t] of this.entries(e)) yield t;
+  }
+  /**
+   * Iterate values in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   */
+  *values(e = "MRU") {
+    for (const [, t] of this.entries(e)) yield t;
+  }
 }
-function v(e, n, t = {}) {
-  const o = { type: "Feature" };
-  return (t.id === 0 || t.id) && (o.id = t.id), t.bbox && (o.bbox = t.bbox), o.properties = n || {}, o.geometry = e, o;
+function M(i, e, t = void 0) {
+  if (i === e) return !0;
+  if (i == null || e == null || typeof i !== "object" || typeof e !== "object") return i === e;
+  t || (t = /* @__PURE__ */ new WeakMap());
+  let l = t.get(i);
+  if (l && l.has(e)) return !0;
+  if (l || (l = /* @__PURE__ */ new WeakSet(), t.set(i, l)), l.add(e), Object.getPrototypeOf(i) !== Object.getPrototypeOf(e)) return !1;
+  if (typeof Uint8Array < "u" && i instanceof Uint8Array) {
+    if (!(e instanceof Uint8Array) || i.length !== e.length) return !1;
+    for (let s = 0; s < i.length; s++) if (i[s] !== e[s]) return !1;
+    return !0;
+  }
+  if (Array.isArray(i)) {
+    if (!Array.isArray(e) || i.length !== e.length) return !1;
+    for (let s = 0; s < i.length; s++) if (!M(i[s], e[s], t)) return !1;
+    return !0;
+  }
+  if (ArrayBuffer.isView(i)) {
+    if (!ArrayBuffer.isView(e) || i.byteLength !== e.byteLength) return !1;
+    const s = new Uint8Array(i.buffer, i.byteOffset || 0, i.byteLength), a = new Uint8Array(e.buffer, e.byteOffset || 0, e.byteLength);
+    for (let f = 0; f < s.length; f++) if (s[f] !== a[f]) return !1;
+    return !0;
+  }
+  if (i instanceof ArrayBuffer) {
+    if (!(e instanceof ArrayBuffer) || i.byteLength !== e.byteLength) return !1;
+    const s = new Uint8Array(i), a = new Uint8Array(e);
+    for (let f = 0; f < s.length; f++) if (s[f] !== a[f]) return !1;
+    return !0;
+  }
+  if (i instanceof Date)
+    return e instanceof Date ? i.getTime() === e.getTime() : !1;
+  if (i instanceof RegExp)
+    return e instanceof RegExp ? i.toString() === e.toString() : !1;
+  if (i instanceof Map) {
+    if (!(e instanceof Map) || i.size !== e.size) return !1;
+    for (const [s, a] of i)
+      if (!e.has(s) || !M(a, e.get(s), t)) return !1;
+    return !0;
+  }
+  if (i instanceof Set) {
+    if (!(e instanceof Set) || i.size !== e.size) return !1;
+    let s = !0;
+    for (const a of i)
+      if (a !== null && typeof a == "object") {
+        s = !1;
+        break;
+      }
+    if (s) {
+      for (const a of i) if (!e.has(a)) return !1;
+      return !0;
+    }
+    for (const a of i) {
+      let f = !1;
+      for (const h of e)
+        if (M(a, h, t)) {
+          f = !0;
+          break;
+        }
+      if (!f) return !1;
+    }
+    return !0;
+  }
+  const u = Object.keys(i), o = Object.keys(e);
+  if (u.length !== o.length) return !1;
+  for (let s = 0; s < u.length; s++) {
+    const a = u[s];
+    if (!Object.prototype.hasOwnProperty.call(e, a) || !M(i[a], e[a], t)) return !1;
+  }
+  return !0;
 }
-function O(e, n = {}) {
+class x {
+  /**
+   * Create a PowerMemoizer.
+   * @param {Function} [fn] - Optional function to memoize immediately.
+   * @param {Object} [options]
+   * @param {function(...*):string} [options.keyResolver] - Function that maps the wrapped call args to a cache key. Defaults to \`JSON.stringify\` on args.
+   *   Note: \`JSON.stringify(args)\` is convenient but can be expensive for large or deeply-nested
+   *   arguments. If the wrapped function is on a hot path, provide a custom \`keyResolver\`
+   *   that cheaply and deterministically maps arguments to keys (for example, join simple
+   *   scalar args with a separator or use a fast hashing function).
+   * @param {Object} [options.cacheOptions] - Options forwarded to the underlying \`PowerCache\` constructor. Supported keys: \`maxEntries\` (number), \`maxWeight\` (number), \`weightFn\` (function(value):number), \`defaultTTL\` (number, ms), \`maxPoolSize\` (number), \`rejectOversized\` (boolean), \`onEvict\` (function(key, value, reason)), \`onExpire\` (function(key, value)), \`initialPoolSize\` (number), \`maxCleanupPerTick\` (number). See \`PowerCache\` constructor JSDoc for details.
+   * @param {number} [options.ttl] - Default TTL (ms) used when constructing the memoized wrapper for \`fn\`.
+   * @param {number} [options.weight] - Default weight used when constructing the memoized wrapper for \`fn\`.
+   */
+  constructor(e, t = {}) {
+    const {
+      keyResolver: n = (...o) => JSON.stringify(o),
+      cacheOptions: r = {},
+      ttl: l,
+      weight: u
+    } = t;
+    if (this.keyResolver = typeof n == "function" ? n : (...o) => JSON.stringify(o), this.cache = new D(r), this._inflight = /* @__PURE__ */ new Map(), this._defaultMemoizeOptions = {}, l !== void 0 && (this._defaultMemoizeOptions.ttl = l), u !== void 0 && (this._defaultMemoizeOptions.weight = u), typeof e == "function") {
+      const o = this._memoize(e, this._defaultMemoizeOptions);
+      o.get = (...s) => this.get(...s), o.has = (...s) => this.has(...s), o.delete = (...s) => this.delete(...s), o.clear = () => this.clear(), o.stats = () => this.stats(), o.cache = this.cache, o.original = e;
+      try {
+        Object.setPrototypeOf(o, x.prototype), o.constructor = x;
+      } catch {
+      }
+      return o;
+    }
+    this.run = () => {
+      throw new TypeError(
+        "No function supplied to PowerMemoizer; call memoize(fn) or construct with a function."
+      );
+    }, this._originalFn = null;
+  }
+  /**
+   * Wrap a function with memoization.
+   * @private
+   * @param {Function} fn - Function to memoize. May return a Promise.
+   * @param {Object} [options]
+   * @param {number} [options.ttl] - Per-entry TTL in ms (overrides cache default)
+   * @param {number} [options.weight] - Optional explicit weight for the entry
+   * @returns {Function} Memoized function
+   */
+  _memoize(e, { ttl: t, weight: n } = {}) {
+    if (typeof e != "function") throw new TypeError("fn must be a function");
+    const r = this;
+    return function(...u) {
+      const o = r.keyResolver(...u);
+      if (r.cache.has(o)) return r.cache.get(o);
+      if (r._inflight.has(o)) return r._inflight.get(o);
+      const s = e(...u);
+      if (s && typeof s.then == "function") {
+        const a = s.then(
+          (f) => {
+            try {
+              r.cache.set(o, f, { ttl: t, weight: n });
+            } catch {
+            }
+            return r._inflight.delete(o), f;
+          },
+          (f) => {
+            throw r._inflight.delete(o), f;
+          }
+        );
+        return r._inflight.set(o, a), a;
+      }
+      return r.cache.set(o, s, { ttl: t, weight: n }), s;
+    };
+  }
+  /**
+   * Public API to memoize an arbitrary function using this PowerMemoizer instance's cache.
+   * Mirrors the behavior used by the constructor when a function is supplied —
+   * returns a callable memoized function with helpers attached (\`get\`, \`has\`, \`delete\`, \`clear\`, \`stats\`, \`cache\`).
+   * @param {Function} fn - Function to memoize
+   * @param {Object} [options] - Optional per-wrapper options { ttl, weight }
+   * @returns {Function} Memoized function
+   */
+  memoize(e, t = {}) {
+    if (typeof e != "function") throw new TypeError("fn must be a function");
+    const n = t && (Object.prototype.hasOwnProperty.call(t, "ttl") || Object.prototype.hasOwnProperty.call(t, "weight")) ? t : this._defaultMemoizeOptions, r = this._memoize(e, n);
+    r.get = (...l) => this.get(...l), r.has = (...l) => this.has(...l), r.delete = (...l) => this.delete(...l), r.clear = () => this.clear(), r.stats = () => this.stats(), r.cache = this.cache, r.original = e;
+    try {
+      Object.setPrototypeOf(r, x.prototype), r.constructor = x;
+    } catch {
+    }
+    return r;
+  }
+  /**
+   * Retrieve a cached value for the given call args (if present).
+   * @param  {...*} args
+   * @returns {*|undefined}
+   */
+  get(...e) {
+    return this.cache.get(this.keyResolver(...e));
+  }
+  /**
+   * Check presence for the given call args.
+   * @param  {...*} args
+   * @returns {boolean}
+   */
+  has(...e) {
+    return this.cache.has(this.keyResolver(...e));
+  }
+  /**
+   * Delete the cached entry for the given call args.
+   * Also clears any inflight Promise for the key.
+   * @param  {...*} args
+   * @returns {boolean}
+   */
+  delete(...e) {
+    const t = this.keyResolver(...e);
+    return this._inflight.has(t) && this._inflight.delete(t), this.cache.delete(t);
+  }
+  /**
+   * Clear all cached entries and any inflight markers.
+   * @returns {void}
+   */
+  clear() {
+    this._inflight.clear(), this.cache.clear();
+  }
+  /**
+   * Expose underlying cache stats.
+   * @returns {Object}
+   */
+  stats() {
+    return this.cache.stats();
+  }
+}
+let N = null;
+if (typeof process < "u" && process.hrtime && typeof process.hrtime.bigint == "function")
+  try {
+    const i = Number(process.hrtime.bigint() / 1000000n);
+    N = Date.now() - i;
+  } catch {
+    N = null;
+  }
+class I {
+  constructor(e = [], t = (n, r) => n < r ? -1 : n > r ? 1 : 0) {
+    if (this.data = e, this.length = this.data.length, this.compare = t, this.length > 0)
+      for (let n = (this.length >> 1) - 1; n >= 0; n--) this._down(n);
+  }
+  push(e) {
+    this.data.push(e), this._up(this.length++);
+  }
+  pop() {
+    if (this.length === 0) return;
+    const e = this.data[0], t = this.data.pop();
+    return --this.length > 0 && (this.data[0] = t, this._down(0)), e;
+  }
+  peek() {
+    return this.data[0];
+  }
+  _up(e) {
+    const { data: t, compare: n } = this, r = t[e];
+    for (; e > 0; ) {
+      const l = e - 1 >> 1, u = t[l];
+      if (n(r, u) >= 0) break;
+      t[e] = u, e = l;
+    }
+    t[e] = r;
+  }
+  _down(e) {
+    const { data: t, compare: n } = this, r = this.length >> 1, l = t[e];
+    for (; e < r; ) {
+      let u = (e << 1) + 1;
+      const o = u + 1;
+      if (o < this.length && n(t[o], t[u]) < 0 && (u = o), n(t[u], l) >= 0) break;
+      t[e] = t[u], e = u;
+    }
+    t[e] = l;
+  }
+}
+function V(i, e = 1, t = !1) {
+  let n = 1 / 0, r = 1 / 0, l = -1 / 0, u = -1 / 0;
+  for (const [p, d] of i[0])
+    p < n && (n = p), d < r && (r = d), p > l && (l = p), d > u && (u = d);
+  const o = l - n, s = u - r, a = Math.max(e, Math.min(o, s));
+  if (a === e) {
+    const p = [n, r];
+    return p.distance = 0, p;
+  }
+  const f = new I([], (p, d) => d.max - p.max);
+  let h = j(i);
+  const m = new P(n + o / 2, r + s / 2, 0, i);
+  m.d > h.d && (h = m);
+  let y = 2;
+  function g(p, d, w) {
+    const _ = new P(p, d, w, i);
+    y++, _.max > h.d + e && f.push(_), _.d > h.d && (h = _, t && console.log(\`found best \${Math.round(1e4 * _.d) / 1e4} after \${y} probes\`));
+  }
+  let c = a / 2;
+  for (let p = n; p < l; p += a)
+    for (let d = r; d < u; d += a)
+      g(p + c, d + c, c);
+  for (; f.length; ) {
+    const { max: p, x: d, y: w, h: _ } = f.pop();
+    if (p - h.d <= e) break;
+    c = _ / 2, g(d - c, w - c, c), g(d + c, w - c, c), g(d - c, w + c, c), g(d + c, w + c, c);
+  }
+  t && console.log(\`num probes: \${y}
+best distance: \${h.d}\`);
+  const A = [h.x, h.y];
+  return A.distance = h.d, A;
+}
+function P(i, e, t, n) {
+  this.x = i, this.y = e, this.h = t, this.d = $(i, e, n), this.max = this.d + this.h * Math.SQRT2;
+}
+function $(i, e, t) {
+  let n = !1, r = 1 / 0;
+  for (const l of t)
+    for (let u = 0, o = l.length, s = o - 1; u < o; s = u++) {
+      const a = l[u], f = l[s];
+      a[1] > e != f[1] > e && i < (f[0] - a[0]) * (e - a[1]) / (f[1] - a[1]) + a[0] && (n = !n), r = Math.min(r, q(i, e, a, f));
+    }
+  return r === 0 ? 0 : (n ? 1 : -1) * Math.sqrt(r);
+}
+function j(i) {
+  let e = 0, t = 0, n = 0;
+  const r = i[0];
+  for (let u = 0, o = r.length, s = o - 1; u < o; s = u++) {
+    const a = r[u], f = r[s], h = a[0] * f[1] - f[0] * a[1];
+    t += (a[0] + f[0]) * h, n += (a[1] + f[1]) * h, e += h * 3;
+  }
+  const l = new P(t / e, n / e, 0, i);
+  return e === 0 || l.d < 0 ? new P(r[0][0], r[0][1], 0, i) : l;
+}
+function q(i, e, t, n) {
+  let r = t[0], l = t[1], u = n[0] - r, o = n[1] - l;
+  if (u !== 0 || o !== 0) {
+    const s = ((i - r) * u + (e - l) * o) / (u * u + o * o);
+    s > 1 ? (r = n[0], l = n[1]) : s > 0 && (r += u * s, l += o * s);
+  }
+  return u = i - r, o = e - l, u * u + o * o;
+}
+var k = 63710088e-1;
+function S(i, e, t = {}) {
+  const n = { type: "Feature" };
+  return (t.id === 0 || t.id) && (n.id = t.id), t.bbox && (n.bbox = t.bbox), n.properties = e || {}, n.geometry = i, n;
+}
+function G(i, e = {}) {
   const t = { type: "FeatureCollection" };
-  return n.id && (t.id = n.id), n.bbox && (t.bbox = n.bbox), t.features = e, t;
+  return e.id && (t.id = e.id), e.bbox && (t.bbox = e.bbox), t.features = i, t;
 }
-function U(e, n) {
-  var t, o, a, c, y, s, i, u, r, f, l = 0, p = e.type === "FeatureCollection", h = e.type === "Feature", d = p ? e.features.length : 1;
-  for (t = 0; t < d; t++) {
-    for (s = p ? (
+function z(i, e) {
+  var t, n, r, l, u, o, s, a, f, h, m = 0, y = i.type === "FeatureCollection", g = i.type === "Feature", c = y ? i.features.length : 1;
+  for (t = 0; t < c; t++) {
+    for (o = y ? (
       // @ts-expect-error: Known type conflict
-      e.features[t].geometry
-    ) : h ? (
+      i.features[t].geometry
+    ) : g ? (
       // @ts-expect-error: Known type conflict
-      e.geometry
-    ) : e, u = p ? (
+      i.geometry
+    ) : i, a = y ? (
       // @ts-expect-error: Known type conflict
-      e.features[t].properties
-    ) : h ? (
+      i.features[t].properties
+    ) : g ? (
       // @ts-expect-error: Known type conflict
-      e.properties
-    ) : {}, r = p ? (
+      i.properties
+    ) : {}, f = y ? (
       // @ts-expect-error: Known type conflict
-      e.features[t].bbox
-    ) : h ? (
+      i.features[t].bbox
+    ) : g ? (
       // @ts-expect-error: Known type conflict
-      e.bbox
-    ) : void 0, f = p ? (
+      i.bbox
+    ) : void 0, h = y ? (
       // @ts-expect-error: Known type conflict
-      e.features[t].id
-    ) : h ? (
+      i.features[t].id
+    ) : g ? (
       // @ts-expect-error: Known type conflict
-      e.id
-    ) : void 0, i = s ? s.type === "GeometryCollection" : !1, y = i ? s.geometries.length : 1, a = 0; a < y; a++) {
-      if (c = i ? s.geometries[a] : s, c === null) {
+      i.id
+    ) : void 0, s = o ? o.type === "GeometryCollection" : !1, u = s ? o.geometries.length : 1, r = 0; r < u; r++) {
+      if (l = s ? o.geometries[r] : o, l === null) {
         if (
           // @ts-expect-error: Known type conflict
-          n(
+          e(
             // @ts-expect-error: Known type conflict
             null,
-            l,
-            u,
-            r,
-            f
+            m,
+            a,
+            f,
+            h
           ) === !1
         )
           return !1;
         continue;
       }
-      switch (c.type) {
+      switch (l.type) {
         case "Point":
         case "LineString":
         case "MultiPoint":
@@ -85,27 +1066,27 @@ function U(e, n) {
         case "MultiPolygon": {
           if (
             // @ts-expect-error: Known type conflict
-            n(
-              c,
+            e(
               l,
-              u,
-              r,
-              f
+              m,
+              a,
+              f,
+              h
             ) === !1
           )
             return !1;
           break;
         }
         case "GeometryCollection": {
-          for (o = 0; o < c.geometries.length; o++)
+          for (n = 0; n < l.geometries.length; n++)
             if (
               // @ts-expect-error: Known type conflict
-              n(
-                c.geometries[o],
-                l,
-                u,
-                r,
-                f
+              e(
+                l.geometries[n],
+                m,
+                a,
+                f,
+                h
               ) === !1
             )
               return !1;
@@ -115,140 +1096,1499 @@ function U(e, n) {
           throw new Error("Unknown Geometry Type");
       }
     }
-    l++;
+    m++;
   }
 }
-function _(e, n) {
-  U(e, function(t, o, a, c, y) {
-    var s = t === null ? null : t.type;
-    switch (s) {
+function X(i, e, t) {
+  var n = t;
+  return z(
+    i,
+    function(r, l, u, o, s) {
+      l === 0 && t === void 0 ? n = r : n = e(
+        // @ts-expect-error: Known type conflict
+        n,
+        r,
+        l,
+        u,
+        o,
+        s
+      );
+    }
+  ), n;
+}
+function J(i, e) {
+  z(i, function(t, n, r, l, u) {
+    var o = t === null ? null : t.type;
+    switch (o) {
       case null:
       case "Point":
       case "LineString":
       case "Polygon":
         return (
           // @ts-expect-error: Known type conflict
-          n(
-            v(t, a, { bbox: c, id: y }),
-            o,
+          e(
+            S(t, r, { bbox: l, id: u }),
+            n,
             0
           ) === !1 ? !1 : void 0
         );
     }
-    var i;
-    switch (s) {
+    var s;
+    switch (o) {
       case "MultiPoint":
-        i = "Point";
+        s = "Point";
         break;
       case "MultiLineString":
-        i = "LineString";
+        s = "LineString";
         break;
       case "MultiPolygon":
-        i = "Polygon";
+        s = "Polygon";
         break;
     }
     for (
-      var u = 0;
+      var a = 0;
       // @ts-expect-error: Known type conflict
-      u < t.coordinates.length;
-      u++
+      a < t.coordinates.length;
+      a++
     ) {
-      var r = t.coordinates[u], f = {
-        type: i,
-        coordinates: r
+      var f = t.coordinates[a], h = {
+        type: s,
+        coordinates: f
       };
       if (
         // @ts-expect-error: Known type conflict
-        n(v(f, a), o, u) === !1
+        e(S(h, r), n, a) === !1
       )
         return !1;
     }
   });
 }
-function k(e) {
-  if (!e) throw new Error("geojson is required");
-  var n = [];
-  return _(e, function(t) {
-    n.push(t);
-  }), O(n);
+function Y(i) {
+  return X(
+    i,
+    (e, t) => e + Q(t),
+    0
+  );
 }
-const A = /* @__PURE__ */ new WeakMap(), F = (e, n, t) => {
-  const [o, a, c] = n.split("|").map(Number), y = Math.pow(2, o) * t, s = 85.05112878, i = 1;
-  return e[0].some((r) => {
-    const f = Math.max(Math.min(r[1], s), -s), l = Math.sin(f * Math.PI / 180), p = (r[0] + 180) / 360, h = 0.5 - Math.log((1 + l) / (1 - l)) / (4 * Math.PI), d = p * y, g = h * y, M = Math.floor(d / t), B = Math.floor(g / t), x = Math.floor(d - M * t), w = Math.floor(g - B * t);
-    return B != c || M != a || x <= i || w <= i || x >= t - i || w >= t - i;
-  });
-};
-function L(e, n = {}) {
-  const { unique: t = !1 } = n;
-  if (e && typeof e == "object") {
-    let r = A.get(e);
-    const f = t ? "unique" : "__count";
-    if (r && r.has(f))
-      return r.get(f);
+function Q(i) {
+  let e = 0, t;
+  switch (i.type) {
+    case "Polygon":
+      return O(i.coordinates);
+    case "MultiPolygon":
+      for (t = 0; t < i.coordinates.length; t++)
+        e += O(i.coordinates[t]);
+      return e;
+    case "Point":
+    case "MultiPoint":
+    case "LineString":
+    case "MultiLineString":
+      return 0;
   }
-  const o = t ? /* @__PURE__ */ new Set() : null;
-  let a = 0;
-  const c = (r) => Array.isArray(r) && r.length >= 2 && typeof r[0] == "number" && typeof r[1] == "number", y = (r) => {
-    t ? o.add(r.slice(0, 3).join(",")) : a++;
+  return 0;
+}
+function O(i) {
+  let e = 0;
+  if (i && i.length > 0) {
+    e += Math.abs(B(i[0]));
+    for (let t = 1; t < i.length; t++)
+      e -= Math.abs(B(i[t]));
+  }
+  return e;
+}
+var K = k * k / 2, b = Math.PI / 180;
+function B(i) {
+  const e = i.length - 1;
+  if (e <= 2) return 0;
+  let t = 0, n = 0;
+  for (; n < e; ) {
+    const r = i[n], l = i[n + 1 === e ? 0 : n + 1], u = i[n + 2 >= e ? (n + 2) % e : n + 2], o = r[0] * b, s = l[1] * b, a = u[0] * b;
+    t += (a - o) * Math.sin(s), n++;
+  }
+  return t * K;
+}
+function H(i) {
+  if (!i) throw new Error("geojson is required");
+  var e = [];
+  return J(i, function(t) {
+    e.push(t);
+  }), G(e);
+}
+const E = /* @__PURE__ */ new WeakMap();
+let Z = 0;
+const C = (i) => (E.has(i) || E.set(i, String(Z++)), E.get(i)), ee = new x(
+  (i, e, t) => {
+    const [n, r, l] = e.split("|").map(Number), u = Math.pow(2, n) * t, o = 85.05112878, s = 1;
+    return i[0].some((f) => {
+      const h = Math.max(Math.min(f[1], o), -o), m = Math.sin(h * Math.PI / 180), y = (f[0] + 180) / 360, g = 0.5 - Math.log((1 + m) / (1 - m)) / (4 * Math.PI), c = y * u, A = g * u, p = Math.floor(c / t), d = Math.floor(A / t), w = Math.floor(c - p * t), _ = Math.floor(A - d * t);
+      return d !== l || p !== r || w <= s || _ <= s || w >= t - s || _ >= t - s;
+    });
+  },
+  {
+    keyResolver: (i, e, t) => \`\${C(i)}|\${e}|\${t}\`
+  }
+), te = new x(
+  (i, e = !1) => {
+    const t = e ? /* @__PURE__ */ new Set() : null;
+    let n = 0;
+    const r = (s) => Array.isArray(s) && s.length >= 2 && typeof s[0] == "number" && typeof s[1] == "number", l = (s) => {
+      e ? t.add(s.slice(0, 3).join(",")) : n++;
+    };
+    function u(s) {
+      if (r(s)) {
+        l(s);
+        return;
+      }
+      if (Array.isArray(s)) for (const a of s) u(a);
+    }
+    function o(s) {
+      if (s) {
+        if (s.type === "FeatureCollection") {
+          for (const a of s.features || []) o(a);
+          return;
+        }
+        if (s.type === "Feature") {
+          o(s.geometry);
+          return;
+        }
+        if (s.type === "GeometryCollection") {
+          for (const a of s.geometries || []) o(a);
+          return;
+        }
+        s.coordinates !== void 0 && u(s.coordinates);
+      }
+    }
+    return o(i), e ? t.size : n;
+  },
+  {
+    keyResolver: (i, e = !1) => \`\${C(i)}|\${e ? "unique" : "__count"}\`
+  }
+), ie = (i, e) => {
+  if (!i || i.geometry?.type !== "Polygon")
+    throw new Error("Non-Polygon geometry");
+  const t = i.geometry.coordinates, n = V(t, e);
+  if (!Array.isArray(n) || !Number.isFinite(n[0]) || !Number.isFinite(n[1]))
+    throw new Error("Invalid polylabel result");
+  return {
+    type: "Point",
+    coordinates: [n[0], n[1]]
   };
-  function s(r) {
-    if (c(r)) {
-      y(r);
+};
+new x(ie, {
+  keyResolver: (i, e) => \`\${C(i)}|\${e === void 0 ? "__default" : String(e)}\`
+});
+const ne = (i, e) => {
+  if (!i || typeof i != "object" || !i.geometry)
+    return 0;
+  if (e === "meters" || e === "m")
+    return Y(i);
+  const t = i.geometry.coordinates;
+  if (!Array.isArray(t) || t.length === 0)
+    return 0;
+  const n = i.geometry.type === "Polygon" ? t[0] : t[0]?.[0];
+  if (!Array.isArray(n))
+    return 0;
+  let r = 0;
+  for (let l = 0; l < n.length; l++) {
+    const [u, o] = n[l], [s, a] = n[(l + 1) % n.length];
+    r += u * a - s * o;
+  }
+  return Math.abs(r) / 2;
+};
+new x(ne, {
+  keyResolver: (i, e) => \`\${C(i)}|\${e === void 0 ? "__planar" : String(e)}\`
+});
+function re(i, e = {}) {
+  const { unique: t = !1 } = e;
+  if (i && typeof i == "object")
+    return te(i, t);
+  const n = t ? /* @__PURE__ */ new Set() : null;
+  let r = 0;
+  const l = (a) => Array.isArray(a) && a.length >= 2 && typeof a[0] == "number" && typeof a[1] == "number", u = (a) => {
+    t ? n.add(a.slice(0, 3).join(",")) : r++;
+  };
+  function o(a) {
+    if (l(a)) {
+      u(a);
       return;
     }
-    if (Array.isArray(r)) for (const f of r) s(f);
+    if (Array.isArray(a)) for (const f of a) o(f);
   }
-  function i(r) {
-    if (r) {
-      if (r.type === "FeatureCollection") {
-        for (const f of r.features || []) i(f);
+  function s(a) {
+    if (a) {
+      if (a.type === "FeatureCollection") {
+        for (const f of a.features || []) s(f);
         return;
       }
-      if (r.type === "Feature") {
-        i(r.geometry);
+      if (a.type === "Feature") {
+        s(a.geometry);
         return;
       }
-      if (r.type === "GeometryCollection") {
-        for (const f of r.geometries || []) i(f);
+      if (a.type === "GeometryCollection") {
+        for (const f of a.geometries || []) s(f);
         return;
       }
-      r.coordinates !== void 0 && s(r.coordinates);
+      a.coordinates !== void 0 && o(a.coordinates);
     }
   }
-  i(e);
-  const u = t ? o.size : a;
-  if (e && typeof e == "object") {
-    let r = A.get(e);
-    const f = t ? "unique" : "__count";
-    r || (r = /* @__PURE__ */ new Map(), A.set(e, r)), r.set(f, u);
-  }
-  return u;
+  return s(i), t ? n.size : r;
 }
-const P = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
-P.onmessage = (e) => {
-  const n = e.data, t = E(n);
+const R = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
+R.onmessage = (i) => {
+  const e = i.data, t = W(e);
   t.tolerance;
-  const o = t.unique, a = t.tileSize, c = /* @__PURE__ */ new Map();
-  t.collection.features.forEach((f) => {
-    const l = f.id, p = c.get(l) || [];
-    p.push(f), c.set(l, p);
+  const n = t.unique, r = t.tileSize, l = /* @__PURE__ */ new Map();
+  t.collection.features.forEach((h) => {
+    const m = h.id, y = l.get(m) || [];
+    y.push(h), l.set(m, y);
   });
-  let y = 0;
-  const s = /* @__PURE__ */ new Map();
-  c.forEach((f, l) => {
-    const p = k({ type: "FeatureCollection", features: f }), h = { type: "FeatureCollection", features: [] };
-    h.features = p.features.filter((d) => d.geometry.type === "Polygon").map((d, g) => {
-      const M = \`\${o}|\${l}|\${g}\`, B = F(d.geometry.coordinates, d.properties._tile, a), x = Object.assign({}, d.properties, { _index: M, clipped: B }), w = { type: "Feature", geometry: d.geometry, properties: x };
-      return y += L(w), w;
-    }), s.set(l, h);
+  let u = 0;
+  const o = /* @__PURE__ */ new Map();
+  l.forEach((h, m) => {
+    const y = H({ type: "FeatureCollection", features: h }), g = { type: "FeatureCollection", features: [] };
+    g.features = y.features.filter((c) => c.geometry.type === "Polygon").map((c, A) => {
+      const p = \`\${n}|\${m}|\${A}\`, d = ee(c.geometry.coordinates, c.properties._tile, r), w = Object.assign({}, c.properties, { _index: p, clipped: d }), _ = { type: "Feature", geometry: c.geometry, properties: w };
+      return u += re(_), _;
+    }), o.set(m, g);
   });
-  const i = Object.fromEntries(s), u = Object.assign({}, i, { unique: o, type: "simplified", size: y }), r = T(u).buffer;
-  P.postMessage(r, [r]);
+  const s = Object.fromEntries(o), a = Object.assign({}, s, { unique: n, type: "simplified", size: u }), f = L(a).buffer;
+  R.postMessage(f, [f]);
 };
-`,b=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",w],{type:"text/javascript;charset=utf-8"});function F(e){let t;try{if(t=b&&(self.URL||self.webkitURL).createObjectURL(b),!t)throw"";const n=new Worker(t,{type:"module",name:e?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(t)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(w),{type:"module",name:e?.name})}}const I=`var rt = /^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i, Pe = Math.ceil, Y = Math.floor, V = "[BigNumber Error] ", De = V + "Number primitive has more than 15 significant digits: ", W = 1e14, P = 14, Oe = 9007199254740991, Ae = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], se = 1e7, U = 1e9;
+`,L=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",N],{type:"text/javascript;charset=utf-8"});function K(h){let e;try{if(e=L&&(self.URL||self.webkitURL).createObjectURL(L),!e)throw"";const n=new Worker(e,{type:"module",name:h?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(e)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(N),{type:"module",name:h?.name})}}const I=`let oe, le;
+function st() {
+  return oe !== void 0 ? oe === !1 ? null : oe : typeof TextEncoder < "u" ? (oe = new TextEncoder(), oe) : typeof Buffer < "u" && typeof Buffer.from == "function" ? (oe = { encode: (i) => new Uint8Array(Buffer.from(i)) }, oe) : (oe = !1, null);
+}
+function ot() {
+  return le !== void 0 ? le === !1 ? null : le : typeof TextDecoder < "u" ? (le = new TextDecoder(), le) : typeof Buffer < "u" && typeof Buffer.from == "function" ? (le = { decode: (i) => Buffer.from(i).toString("utf8") }, le) : (le = !1, null);
+}
+const lt = (i) => {
+  if (i instanceof Uint8Array) return i;
+  if (ArrayBuffer.isView(i)) return new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
+  if (i instanceof ArrayBuffer) return new Uint8Array(i);
+  const e = JSON.stringify(i), t = st();
+  if (t && typeof t.encode == "function") return t.encode(e);
+  throw new Error("No TextEncoder or Buffer available to encode object");
+}, ut = (i) => {
+  let e;
+  if (i instanceof Uint8Array) e = i;
+  else if (ArrayBuffer.isView(i)) e = new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
+  else if (i instanceof ArrayBuffer) e = new Uint8Array(i);
+  else if (typeof Buffer < "u" && typeof Buffer.isBuffer == "function" && Buffer.isBuffer(i))
+    e = new Uint8Array(i);
+  else throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");
+  const t = ot();
+  if (t && typeof t.decode == "function") return JSON.parse(t.decode(e));
+  if (typeof TextDecoder < "u") return JSON.parse(new TextDecoder().decode(e));
+  throw new Error("No TextDecoder or Buffer available to decode object");
+};
+class ht {
+  /**
+   * Create a PowerCache.
+   * @param {Object} [options]
+   * @param {number} [options.maxEntries=Infinity] Maximum number of entries.
+   * @param {number} [options.maxWeight=Infinity] Maximum total weight across entries.
+   * @param {function(*):number} [options.weightFn] Function to compute weight for a value.
+   * @param {number} [options.defaultTTL=60000] Default TTL (ms) for entries.
+   * @param {number} [options.maxPoolSize=1000] Maximum node pool size for reuse.
+   * @param {boolean} [options.rejectOversized=false] If true, inserting an item whose weight > \`maxWeight\` will be rejected.
+   * @param {function(*, *, string):void} [options.onEvict] Callback invoked when an item is evicted/deleted/rejected. Called as \`(key, value, reason)\` where reason is \`'evicted'|'deleted'|'rejected-oversized'\`.
+   * @param {function(*, *):void} [options.onExpire] Callback invoked when an item expires. Called as \`(key, value)\`.
+   * @param {number} [options.initialPoolSize=0] Prefill the internal node pool with this many nodes (capped by \`maxPoolSize\`).
+   * @param {number} [options.maxCleanupPerTick=100] Default max nodes scanned per cleanup tick when running \`startCleanup()\`.
+   * @param {boolean} [options.eagerCleanupOnRead=false] If true, \`peek()\` and \`has()\` will eagerly remove expired nodes when observed.
+   */
+  constructor({
+    maxEntries: e = 1 / 0,
+    maxWeight: t = 1 / 0,
+    weightFn: n = () => 1,
+    defaultTTL: r = 6e4,
+    maxPoolSize: l = 1e3,
+    rejectOversized: f = !1,
+    onEvict: o = null,
+    onExpire: a = null,
+    initialPoolSize: h = 0,
+    maxCleanupPerTick: E = 100,
+    eagerCleanupOnRead: S = !1
+  } = {}) {
+    this.maxEntries = e, this.maxWeight = t, this.weightFn = n, this.defaultTTL = r, this.maxPoolSize = l, this.rejectOversized = !!f, this.onEvict = typeof o == "function" ? o : null, this.onExpire = typeof a == "function" ? a : null, this.maxCleanupPerTick = Number.isFinite(+E) ? Math.max(1, +E) : 100, this.eagerCleanupOnRead = !!S, this.map = /* @__PURE__ */ new Map(), this.head = null, this.tail = null, this.pool = [];
+    for (let A = 0; A < Math.min(h || 0, this.maxPoolSize); A++)
+      this.pool.push({ key: null, value: null, weight: 0, expiresAt: 0, prev: null, next: null });
+    this.currentWeight = 0, this.hits = 0, this.misses = 0, this.evictions = 0, this.rejected = 0, this.expirations = 0, this._cleanupTimer = null, this._cleanupRunning = !1, this._cleanupParams = null, this._cleanupCursor = null, this._cleanupCursorValid = !1, this._inflightPromises = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Allocate a pool node or create a new one.
+   *
+   * This helper either reuses a node from the internal \`pool\` or creates a
+   * fresh node object. The returned node is initialized with the provided
+   * key/value/weight/expiresAt and has its \`prev\`/\`next\` pointers nulled.
+   *
+   * @private
+   * @param {*} key
+   * @param {*} value
+   * @param {number} weight
+   * @param {number} expiresAt
+   * @returns {CacheNode}
+   */
+  _allocNode(e, t, n, r) {
+    const l = this.pool.pop() || {
+      key: null,
+      value: null,
+      weight: 0,
+      expiresAt: 0,
+      prev: null,
+      next: null
+    };
+    return l.key = e, l.value = t, l.weight = n || 0, l.expiresAt = r || 0, l.prev = null, l.next = null, l;
+  }
+  /**
+   * Reset and return a node to the pool for reuse.
+   *
+   * This helper clears the node fields and returns it to the node pool when
+   * the pool has capacity. It is called for evicted or deleted nodes to
+   * reduce allocation churn.
+   *
+   * @private
+   * @param {CacheNode} node
+   * @returns {void}
+   */
+  _freeNode(e) {
+    e.key = null, e.value = null, e.weight = 0, e.expiresAt = 0, e.prev = null, e.next = null, this.pool.length < this.maxPoolSize && this.pool.push(e);
+  }
+  /**
+   * Remove a node that has expired.
+   *
+   * Performs map deletion, linked-list unlink, invokes \`onExpire\`, returns the
+   * node to the pool, and updates bookkeeping counters (\`misses\` and
+   * \`expirations\`). This helper is called from several expiration paths and
+   * centralizes the necessary cleanup steps.
+   *
+   * @private
+   * @param {CacheNode} node
+   * @param {number} now - Current timestamp (ms) used for comparisons
+   * @param {boolean} [countMiss=false] - When true, increment the \`misses\` counter for user-facing lookups.
+   */
+  _removeExpiredNode(e, t, n = !1) {
+    if (!e || !e.expiresAt || e.expiresAt > t) return !1;
+    const r = e.key, l = e.value, f = e.next;
+    this.map.delete(r), this.currentWeight -= e.weight || 0, this._cleanupCursor === e && (this._cleanupCursor = f), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(e);
+    try {
+      this.onExpire && this.onExpire(r, l);
+    } catch {
+    }
+    return this._freeNode(e), n && this.misses++, this.expirations++, !0;
+  }
+  /**
+   * Fetch a node and validate expiry.
+   * @private
+   * @param {*} key
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @param {boolean} [options.countMiss=false]
+   * @returns {CacheNode|null}
+   */
+  _fetchValidNode(e, { ignoreExpiry: t = !1, countMiss: n = !1, allowExpired: r = !1 } = {}) {
+    const l = this.map.get(e);
+    return l ? !t && l.expiresAt && l.expiresAt <= Date.now() ? r ? l : (this._removeExpiredNode(l, Date.now(), n), null) : l : (n && this.misses++, null);
+  }
+  /**
+   * Start a background refresh for an expired entry.
+   *
+   * If a refresh is already in flight for the key, this helper does nothing.
+   * The refreshed value is written back to cache when the factory resolves.
+   * Errors are swallowed so the stale value remains available.
+   *
+   * @private
+   * @param {*} key
+   * @param {Function} factory
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @returns {void}
+   */
+  _refreshStaleEntry(e, t, { ttl: n = void 0, weight: r = void 0 } = {}) {
+    if (this._inflightPromises.has(e)) return;
+    let l;
+    try {
+      l = Promise.resolve().then(() => t());
+    } catch {
+      return;
+    }
+    const f = l.then(
+      (o) => {
+        try {
+          this.set(e, o, { ttl: n, weight: r });
+        } catch {
+        }
+        return this._inflightPromises.delete(e), o;
+      },
+      (o) => {
+        this._inflightPromises.delete(e);
+      }
+    );
+    this._inflightPromises.set(e, f);
+  }
+  /**
+   * Append a node to the tail (mark it most-recently used).
+   * This updates the linked-list pointers appropriately and is used when
+   * inserting new nodes or promoting a node to MRU.
+   *
+   * @private
+   * @param {CacheNode} node - Node to append at the tail.
+   * @returns {void}
+   */
+  _append(e) {
+    if (!this.tail) {
+      this.head = this.tail = e;
+      return;
+    }
+    e.prev = this.tail, e.next = null, this.tail.next = e, this.tail = e;
+  }
+  /**
+   * Remove a node from the linked list without freeing it. The node's
+   * \`prev\`/\`next\` references are updated on neighbors and the node's links
+   * are nulled. Does not modify \`this.map\` or bookkeeping counters; callers
+   * are responsible for those actions.
+   *
+   * @private
+   * @param {CacheNode} node - Node to unlink from the list.
+   * @returns {void}
+   */
+  _remove(e) {
+    const t = e.prev, n = e.next;
+    t ? t.next = n : this.head = n, n ? n.prev = t : this.tail = t, e.prev = e.next = null;
+  }
+  /**
+   * Move an existing node to the tail (mark as most-recently used).
+   * Implemented as an unlink followed by an append. No-op when node is
+   * already the tail.
+   *
+   * @private
+   * @param {CacheNode} node - Node to promote to MRU position.
+   * @returns {void}
+   */
+  _moveToTail(e) {
+    this.tail !== e && (this._remove(e), this._append(e));
+  }
+  /**
+   * Evict nodes from the head (least-recently used) until the cache
+   * satisfies both \`maxEntries\` and \`maxWeight\` constraints. For each
+   * evicted node \`onEvict\` is invoked if provided and the node is returned
+   * to the node pool via \`_freeNode\`.
+   *
+   * @private
+   * @returns {void}
+   */
+  _evictIfNeeded() {
+    for (; this.map.size > this.maxEntries || this.currentWeight > this.maxWeight; ) {
+      const e = this.head;
+      if (!e) break;
+      const t = e.next, n = e.key, r = e.value;
+      this._cleanupCursor === e && (this._cleanupCursor = t), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(e), this.map.delete(n), this.currentWeight -= e.weight || 0, this.evictions++;
+      try {
+        this.onEvict && this.onEvict(n, r, "evicted");
+      } catch {
+      }
+      this._freeNode(e);
+    }
+  }
+  /**
+   * Set a value in the cache (add or update).
+   * Marks the entry as most-recently used.
+   * If \`rejectOversized\` is enabled and the computed/explicit weight exceeds \`maxWeight\`,
+   * the insertion will be rejected and \`set\` returns \`false\` (otherwise returns \`this\`).
+   * @param {*} key - Cache key
+   * @param {*} value - Value to store
+   * @param {Object} [options]
+   * @param {number} [options.ttl] - Time-to-live in ms. Use \`null\` or \`Infinity\` to disable expiration.
+   * @param {number} [options.weight] - Optional explicit weight for the entry. If omitted, \`weightFn\` is used.
+   * @returns {this|false} \`this\` on success, or \`false\` when insertion was rejected due to oversize.
+   */
+  set(e, t, { ttl: n = this.defaultTTL, weight: r = null } = {}) {
+    const l = Date.now(), f = n == null || n === 1 / 0 ? 0 : l + n;
+    let o;
+    if (r != null)
+      o = r;
+    else {
+      try {
+        o = this.weightFn(t);
+      } catch {
+        o = 0;
+      }
+      o == null && (o = 0);
+    }
+    const a = Number.isFinite(+o) ? Math.max(0, +o) : 0;
+    if (this.rejectOversized && Number.isFinite(this.maxWeight) && a > this.maxWeight) {
+      this.rejected++;
+      try {
+        this.onEvict && this.onEvict(e, t, "rejected-oversized");
+      } catch {
+      }
+      return !1;
+    }
+    if (this.map.has(e)) {
+      const h = this.map.get(e);
+      this.currentWeight -= h.weight || 0, h.value = t, h.weight = a, h.expiresAt = f, this.currentWeight += h.weight || 0, this._moveToTail(h);
+    } else {
+      const h = this._allocNode(e, t, a, f);
+      this.map.set(e, h), this._append(h), this.currentWeight += h.weight || 0, this._evictIfNeeded();
+    }
+    return this;
+  }
+  /**
+   * Retrieve a value and mark it as recently used.
+   * @param {*} key
+   * @returns {*|undefined} The stored value or \`undefined\` if missing/expired.
+   */
+  get(e) {
+    const t = this._fetchValidNode(e, { countMiss: !0 });
+    if (t)
+      return this._moveToTail(t), this.hits++, t.value;
+  }
+  /**
+   * Get a value without updating recency.
+   * Returns \`undefined\` for missing or expired entries.
+   * @param {*} key
+   * @returns {*|undefined}
+   */
+  peek(e) {
+    const t = this._fetchValidNode(e);
+    return t ? t.value : void 0;
+  }
+  /**
+   * Check membership without affecting recency.
+   * @param {*} key
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false] If true, consider expired entries as present.
+   * @returns {boolean}
+   */
+  has(e, { ignoreExpiry: t = !1 } = {}) {
+    return !!this._fetchValidNode(e, { ignoreExpiry: t });
+  }
+  /**
+   * Atomically read-or-compute a value for \`key\`.
+   * If the key is present and not expired the stored value is returned.
+   * Otherwise \`factory\` is invoked to produce the value which is stored
+   * in the cache and returned. \`factory\` may be a value (in which case it
+   * is stored directly) or a function. If the function returns a Promise,
+   * the Promise is returned and the resolved value is stored when it settles.
+   *
+   * Note: this method does not deduplicate concurrent async factories —
+   * for async factories prefer \`getOrSetAsync\` or use
+   * \`PowerMemoizer\` for inflight deduplication.
+   *
+   * @param {*} key
+   * @param {Function|*} factory - Function that produces the value or a direct value.
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @param {boolean} [options.staleWhileRevalidate=false] If true, return an expired value immediately and refresh the cache in the background.
+   * @returns {*|Promise<*>}
+   */
+  getOrSet(e, t, { ttl: n = void 0, weight: r = void 0, staleWhileRevalidate: l = !1 } = {}) {
+    const f = Date.now(), o = this._fetchValidNode(e, {
+      countMiss: !1,
+      allowExpired: l
+    });
+    if (o)
+      if (o.expiresAt && o.expiresAt <= f) {
+        if (typeof t == "function")
+          return this._moveToTail(o), this.hits++, this._refreshStaleEntry(e, t, { ttl: n, weight: r }), o.value;
+        this._removeExpiredNode(o, f, !0);
+      } else
+        return this._moveToTail(o), this.hits++, o.value;
+    else
+      this.misses++;
+    if (typeof t == "function") {
+      const a = t();
+      return a && typeof a.then == "function" ? a.then((h) => {
+        try {
+          this.set(e, h, { ttl: n, weight: r });
+        } catch {
+        }
+        return h;
+      }) : (this.set(e, a, { ttl: n, weight: r }), a);
+    }
+    return this.set(e, t, { ttl: n, weight: r }), t;
+  }
+  /**
+   * Bulk set multiple entries. Accepts an iterable/array of [key, value] pairs.
+   * Computes weight once per value and applies a single eviction pass at the end.
+   * @param {Iterable<[*,*]>} entries
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @returns {this}
+   */
+  setMany(e, { ttl: t = void 0, weight: n = void 0 } = {}) {
+    const r = Date.now(), l = t == null || t === 1 / 0 ? 0 : r + t;
+    for (const f of e) {
+      if (!f) continue;
+      const [o, a] = f;
+      let h;
+      if (n != null) h = n;
+      else {
+        try {
+          h = this.weightFn(a);
+        } catch {
+          h = 0;
+        }
+        h == null && (h = 0);
+      }
+      const E = Number.isFinite(+h) ? Math.max(0, +h) : 0;
+      if (this.map.has(o)) {
+        const S = this.map.get(o);
+        this.currentWeight -= S.weight || 0, S.value = a, S.weight = E, S.expiresAt = l, this.currentWeight += S.weight || 0, this._moveToTail(S);
+      } else {
+        const S = this._allocNode(o, a, E, l);
+        this.map.set(o, S), this._append(S), this.currentWeight += S.weight || 0;
+      }
+    }
+    return this._evictIfNeeded(), this;
+  }
+  /**
+   * Bulk get multiple keys. Returns a Map of found entries.
+   * @param {Iterable<*>} keys
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @returns {Map}
+   */
+  getMany(e, { ignoreExpiry: t = !1 } = {}) {
+    const n = /* @__PURE__ */ new Map();
+    for (const r of e) {
+      const l = this._fetchValidNode(r, { ignoreExpiry: t, countMiss: !0 });
+      l && (this._moveToTail(l), this.hits++, n.set(r, l.value));
+    }
+    return n;
+  }
+  /**
+   * Touch an entry: update its recency and optionally refresh TTL without
+   * reading or modifying the stored value.
+   * @param {*} key
+   * @param {number} [ttl] - Optional per-call TTL in ms. Use \`null\`/\`Infinity\` to disable expiry.
+   * @returns {boolean} True if the entry existed (and was not expired), false otherwise.
+   */
+  touch(e, t = void 0) {
+    const n = this._fetchValidNode(e);
+    if (!n) return !1;
+    const r = Date.now();
+    return t !== void 0 && (n.expiresAt = t == null || t === 1 / 0 ? 0 : r + t), this._moveToTail(n), !0;
+  }
+  /**
+   * Async read-or-compute with inflight deduplication.
+   * If a factory is already running for \`key\`, returns the same Promise.
+   * Otherwise invokes \`asyncFactory\` and stores the resolved value in cache.
+   * @param {*} key
+   * @param {Function} asyncFactory - Function returning a Promise or value.
+   * @param {Object} [options]
+   * @param {number} [options.ttl]
+   * @param {number} [options.weight]
+   * @param {boolean} [options.staleWhileRevalidate=false] If true, return an expired value immediately and refresh the cache in the background.
+   * @returns {Promise<*>}
+   */
+  getOrSetAsync(e, t, { ttl: n = void 0, weight: r = void 0, staleWhileRevalidate: l = !1 } = {}) {
+    if (typeof t != "function")
+      return Promise.resolve(this.getOrSet(e, t, { ttl: n, weight: r }));
+    const f = Date.now(), o = this.map.get(e);
+    if (o)
+      if (o.expiresAt && o.expiresAt <= f) {
+        if (l)
+          return this._moveToTail(o), this.hits++, this._refreshStaleEntry(e, t, { ttl: n, weight: r }), Promise.resolve(o.value);
+        this._removeExpiredNode(o, f, !1);
+      } else
+        return this._moveToTail(o), this.hits++, Promise.resolve(o.value);
+    if (this._inflightPromises.has(e)) return this._inflightPromises.get(e);
+    this.misses++;
+    let a;
+    try {
+      a = Promise.resolve().then(() => t());
+    } catch (E) {
+      return Promise.reject(E);
+    }
+    const h = a.then(
+      (E) => {
+        try {
+          this.set(e, E, { ttl: n, weight: r });
+        } catch {
+        }
+        return this._inflightPromises.delete(e), E;
+      },
+      (E) => {
+        throw this._inflightPromises.delete(e), E;
+      }
+    );
+    return this._inflightPromises.set(e, h), h;
+  }
+  /**
+   * Check membership without affecting recency and verify the stored value is deep-equal
+   * to the provided \`value\`.
+   *
+   * Optimizations:
+   * - Fast reference equality short-circuit
+   * - Fast primitive checks
+   * - Special-cases for Arrays, TypedArrays/ArrayBuffer, Date, RegExp, Map and Set
+   * - WeakMap/WeakSet-based cycle detection
+   *
+   * @param {*} key
+   * @param {*} value
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false] If true, consider expired entries as present.
+   * @param {WeakMap} [options.seen] Optional reusable \`seen\` WeakMap for callers that
+   *        perform many deep-equality checks and want to avoid per-call allocations.
+   * @returns {boolean}
+   */
+  hasEqual(e, t, { ignoreExpiry: n = !1, seen: r = void 0 } = {}) {
+    const l = this._fetchValidNode(e, { ignoreExpiry: n });
+    if (!l) return !1;
+    const f = l.value;
+    return f === t ? !0 : typeof f !== "object" || f === null || typeof t !== "object" || t === null ? f === t : pe(f, t, r);
+  }
+  /**
+   * Variant accepting an explicit \`seen\` WeakMap for reuse across many checks.
+   * @param {*} key
+   * @param {*} value
+   * @param {WeakMap} seen
+   * @param {Object} [options]
+   * @param {boolean} [options.ignoreExpiry=false]
+   * @returns {boolean}
+   */
+  hasEqualWithSeen(e, t, n, { ignoreExpiry: r = !1 } = {}) {
+    return this.hasEqual(e, t, { ignoreExpiry: r, seen: n });
+  }
+  /**
+   * Delete an entry from the cache.
+   * @param {*} key
+   * @returns {boolean} true if the key was removed.
+   */
+  delete(e) {
+    const t = this.map.get(e);
+    if (!t) return !1;
+    const n = t.next;
+    this.map.delete(e), this.currentWeight -= t.weight || 0, this._cleanupCursor === t && (this._cleanupCursor = n), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(t);
+    try {
+      this.onEvict && this.onEvict(t.key, t.value, "deleted");
+    } catch {
+    }
+    return this._freeNode(t), !0;
+  }
+  /**
+   * Clear the cache and return nodes to the pool.
+   * @returns {void}
+   */
+  clear() {
+    for (let e = this.head; e; ) {
+      const t = e.next;
+      this._freeNode(e), e = t;
+    }
+    this.head = this.tail = null, this.map.clear(), this.currentWeight = 0, this._cleanupCursor = null, this._cleanupCursorValid = !1;
+  }
+  /**
+   * Remove expired entries by scanning from least-recently used to most.
+   * @returns {void}
+   */
+  cleanupExpired() {
+    return this.cleanupExpiredUpTo();
+  }
+  /**
+   * Cleanup expired entries, scanning up to \`maxScan\` nodes.
+   * Scanning resumes from an internal cursor so repeated small passes will cover the list
+   * without repeatedly scanning the head of a very large cache. When the end is reached the
+   * cursor wraps to the head.
+   * @param {number} [maxScan=Infinity] Maximum nodes to scan in this pass.
+   * @returns {number} Number of nodes scanned
+   */
+  cleanupExpiredUpTo(e = 1 / 0) {
+    const t = Date.now();
+    let n = 0, r = this._cleanupCursor && this._cleanupCursorValid ? this._cleanupCursor : this.head;
+    for (; r && n < e; ) {
+      const l = r.next;
+      if (r.expiresAt && r.expiresAt <= t) {
+        const f = r.key, o = r.value;
+        this.map.delete(f), this.currentWeight -= r.weight || 0, this._cleanupCursor === r && (this._cleanupCursor = l), this._cleanupCursorValid = !!this._cleanupCursor, this._remove(r);
+        try {
+          this.onExpire && this.onExpire(f, o);
+        } catch {
+        }
+        this._freeNode(r), this.expirations++;
+      }
+      r = l, n++;
+    }
+    return this._cleanupCursor = r || this.head, this._cleanupCursorValid = !!this._cleanupCursor, n;
+  }
+  /**
+   * Start periodic, non-blocking cleanup.
+   * Accepts either a numeric interval (ms) or an options object \`{ interval, maxCleanupPerTick }\`.
+   * The loop is implemented with \`setTimeout\` and scans up to \`maxCleanupPerTick\` nodes per pass
+   * to avoid long event-loop stalls.
+   * Note: call \`stopCleanup()\` to stop the periodic timer (for example, on application shutdown)
+   * to ensure the internal timer is cleared and resources can be reclaimed.
+   * @param {number|Object} [intervalOrOptions]
+   * @param {number} [intervalOrOptions.interval] Interval between cleanup passes in ms.
+   * @param {number} [intervalOrOptions.maxCleanupPerTick] Max nodes to scan per pass.
+   * @returns {void}
+   */
+  startCleanup(e = {}) {
+    let t, n;
+    typeof e == "number" ? (t = e, n = this.maxCleanupPerTick) : (t = Number.isFinite(+e.interval) ? +e.interval : Math.max(1e3, Math.min(this.defaultTTL || 6e4, 6e4)), n = Number.isFinite(+e.maxCleanupPerTick) ? Math.max(1, +e.maxCleanupPerTick) : this.maxCleanupPerTick), this.stopCleanup(), this._cleanupParams = { interval: t, maxCleanupPerTick: n }, this._cleanupTimer = setTimeout(() => this._cleanupTick(), t);
+  }
+  /**
+   * Stop periodic cleanup.
+   * @returns {void}
+   */
+  stopCleanup() {
+    this._cleanupTimer && (clearTimeout(this._cleanupTimer), this._cleanupTimer = null), this._cleanupRunning = !1, this._cleanupParams = null;
+  }
+  /**
+   * Synchronous disposal hook (TC39 Explicit Resource Management).
+   * Stops any background cleanup and clears the cache.
+   */
+  [Symbol.dispose]() {
+    try {
+      this.stopCleanup();
+    } catch {
+    }
+    try {
+      this.clear();
+    } catch {
+    }
+  }
+  /**
+   * Asynchronous disposal hook. Provided for symmetry with \`using\`/\`await using\`.
+   * Cache cleanup is synchronous so this simply performs the same actions and
+   * returns a resolved Promise for await compatibility.
+   */
+  async [Symbol.asyncDispose]() {
+    try {
+      this.stopCleanup();
+    } catch {
+    }
+    try {
+      this.clear();
+    } catch {
+    }
+  }
+  /**
+   * Prototype tick used by the cleanup timer loop. Separated to avoid
+   * allocating a per-call closure inside \`startCleanup()\`.
+   * @private
+   */
+  _cleanupTick() {
+    if (this._cleanupTimer != null) {
+      if (this._cleanupRunning) {
+        this._cleanupTimer = setTimeout(() => this._cleanupTick(), this._cleanupParams.interval);
+        return;
+      }
+      this._cleanupRunning = !0;
+      try {
+        this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick);
+      } finally {
+        this._cleanupRunning = !1;
+      }
+      this._cleanupTimer = setTimeout(() => this._cleanupTick(), this._cleanupParams.interval);
+    }
+  }
+  /**
+   * Current number of entries in cache.
+   * @returns {number}
+   */
+  get size() {
+    return this.map.size;
+  }
+  /**
+   * Hit rate as a fraction (hits / (hits + misses)).
+   * @returns {number}
+   */
+  get hitRate() {
+    const e = (this.hits || 0) + (this.misses || 0);
+    return e ? this.hits / e : 0;
+  }
+  /**
+   * Return runtime statistics for the cache.
+   * @returns {{size:number, weight:number, hits:number, misses:number, evictions:number, rejected:number, poolSize:number}}
+   */
+  stats() {
+    return {
+      size: this.size,
+      weight: this.currentWeight,
+      hits: this.hits,
+      misses: this.misses,
+      evictions: this.evictions,
+      expirations: this.expirations,
+      rejected: this.rejected,
+      poolSize: this.pool.length
+    };
+  }
+  /**
+   * Resize the cache limits and evict if necessary.
+   * @param {Object} options
+   * @param {number} [options.maxEntries]
+   * @param {number} [options.maxWeight]
+   */
+  resize({ maxEntries: e, maxWeight: t } = {}) {
+    Number.isFinite(+e) && (this.maxEntries = Math.max(0, +e)), Number.isFinite(+t) && (this.maxWeight = Math.max(0, +t)), this._evictIfNeeded();
+  }
+  /**
+   * Iterate entries in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   * @returns {IterableIterator<[*,*]>}
+   */
+  *entries(e = "MRU") {
+    if (e === "MRU")
+      for (let t = this.tail; t; t = t.prev) yield [t.key, t.value];
+    else
+      for (let t = this.head; t; t = t.next) yield [t.key, t.value];
+  }
+  [Symbol.iterator]() {
+    return this.entries("MRU");
+  }
+  /**
+   * Iterate keys in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   */
+  *keys(e = "MRU") {
+    for (const [t] of this.entries(e)) yield t;
+  }
+  /**
+   * Iterate values in LRU or MRU order.
+   * @param {'LRU'|'MRU'} [order='MRU']
+   */
+  *values(e = "MRU") {
+    for (const [, t] of this.entries(e)) yield t;
+  }
+}
+function pe(i, e, t = void 0) {
+  if (i === e) return !0;
+  if (i == null || e == null || typeof i !== "object" || typeof e !== "object") return i === e;
+  t || (t = /* @__PURE__ */ new WeakMap());
+  let l = t.get(i);
+  if (l && l.has(e)) return !0;
+  if (l || (l = /* @__PURE__ */ new WeakSet(), t.set(i, l)), l.add(e), Object.getPrototypeOf(i) !== Object.getPrototypeOf(e)) return !1;
+  if (typeof Uint8Array < "u" && i instanceof Uint8Array) {
+    if (!(e instanceof Uint8Array) || i.length !== e.length) return !1;
+    for (let a = 0; a < i.length; a++) if (i[a] !== e[a]) return !1;
+    return !0;
+  }
+  if (Array.isArray(i)) {
+    if (!Array.isArray(e) || i.length !== e.length) return !1;
+    for (let a = 0; a < i.length; a++) if (!pe(i[a], e[a], t)) return !1;
+    return !0;
+  }
+  if (ArrayBuffer.isView(i)) {
+    if (!ArrayBuffer.isView(e) || i.byteLength !== e.byteLength) return !1;
+    const a = new Uint8Array(i.buffer, i.byteOffset || 0, i.byteLength), h = new Uint8Array(e.buffer, e.byteOffset || 0, e.byteLength);
+    for (let E = 0; E < a.length; E++) if (a[E] !== h[E]) return !1;
+    return !0;
+  }
+  if (i instanceof ArrayBuffer) {
+    if (!(e instanceof ArrayBuffer) || i.byteLength !== e.byteLength) return !1;
+    const a = new Uint8Array(i), h = new Uint8Array(e);
+    for (let E = 0; E < a.length; E++) if (a[E] !== h[E]) return !1;
+    return !0;
+  }
+  if (i instanceof Date)
+    return e instanceof Date ? i.getTime() === e.getTime() : !1;
+  if (i instanceof RegExp)
+    return e instanceof RegExp ? i.toString() === e.toString() : !1;
+  if (i instanceof Map) {
+    if (!(e instanceof Map) || i.size !== e.size) return !1;
+    for (const [a, h] of i)
+      if (!e.has(a) || !pe(h, e.get(a), t)) return !1;
+    return !0;
+  }
+  if (i instanceof Set) {
+    if (!(e instanceof Set) || i.size !== e.size) return !1;
+    let a = !0;
+    for (const h of i)
+      if (h !== null && typeof h == "object") {
+        a = !1;
+        break;
+      }
+    if (a) {
+      for (const h of i) if (!e.has(h)) return !1;
+      return !0;
+    }
+    for (const h of i) {
+      let E = !1;
+      for (const S of e)
+        if (pe(h, S, t)) {
+          E = !0;
+          break;
+        }
+      if (!E) return !1;
+    }
+    return !0;
+  }
+  const f = Object.keys(i), o = Object.keys(e);
+  if (f.length !== o.length) return !1;
+  for (let a = 0; a < f.length; a++) {
+    const h = f[a];
+    if (!Object.prototype.hasOwnProperty.call(e, h) || !pe(i[h], e[h], t)) return !1;
+  }
+  return !0;
+}
+class re {
+  /**
+   * Create a PowerMemoizer.
+   * @param {Function} [fn] - Optional function to memoize immediately.
+   * @param {Object} [options]
+   * @param {function(...*):string} [options.keyResolver] - Function that maps the wrapped call args to a cache key. Defaults to \`JSON.stringify\` on args.
+   *   Note: \`JSON.stringify(args)\` is convenient but can be expensive for large or deeply-nested
+   *   arguments. If the wrapped function is on a hot path, provide a custom \`keyResolver\`
+   *   that cheaply and deterministically maps arguments to keys (for example, join simple
+   *   scalar args with a separator or use a fast hashing function).
+   * @param {Object} [options.cacheOptions] - Options forwarded to the underlying \`PowerCache\` constructor. Supported keys: \`maxEntries\` (number), \`maxWeight\` (number), \`weightFn\` (function(value):number), \`defaultTTL\` (number, ms), \`maxPoolSize\` (number), \`rejectOversized\` (boolean), \`onEvict\` (function(key, value, reason)), \`onExpire\` (function(key, value)), \`initialPoolSize\` (number), \`maxCleanupPerTick\` (number). See \`PowerCache\` constructor JSDoc for details.
+   * @param {number} [options.ttl] - Default TTL (ms) used when constructing the memoized wrapper for \`fn\`.
+   * @param {number} [options.weight] - Default weight used when constructing the memoized wrapper for \`fn\`.
+   */
+  constructor(e, t = {}) {
+    const {
+      keyResolver: n = (...o) => JSON.stringify(o),
+      cacheOptions: r = {},
+      ttl: l,
+      weight: f
+    } = t;
+    if (this.keyResolver = typeof n == "function" ? n : (...o) => JSON.stringify(o), this.cache = new ht(r), this._inflight = /* @__PURE__ */ new Map(), this._defaultMemoizeOptions = {}, l !== void 0 && (this._defaultMemoizeOptions.ttl = l), f !== void 0 && (this._defaultMemoizeOptions.weight = f), typeof e == "function") {
+      const o = this._memoize(e, this._defaultMemoizeOptions);
+      o.get = (...a) => this.get(...a), o.has = (...a) => this.has(...a), o.delete = (...a) => this.delete(...a), o.clear = () => this.clear(), o.stats = () => this.stats(), o.cache = this.cache, o.original = e;
+      try {
+        Object.setPrototypeOf(o, re.prototype), o.constructor = re;
+      } catch {
+      }
+      return o;
+    }
+    this.run = () => {
+      throw new TypeError(
+        "No function supplied to PowerMemoizer; call memoize(fn) or construct with a function."
+      );
+    }, this._originalFn = null;
+  }
+  /**
+   * Wrap a function with memoization.
+   * @private
+   * @param {Function} fn - Function to memoize. May return a Promise.
+   * @param {Object} [options]
+   * @param {number} [options.ttl] - Per-entry TTL in ms (overrides cache default)
+   * @param {number} [options.weight] - Optional explicit weight for the entry
+   * @returns {Function} Memoized function
+   */
+  _memoize(e, { ttl: t, weight: n } = {}) {
+    if (typeof e != "function") throw new TypeError("fn must be a function");
+    const r = this;
+    return function(...f) {
+      const o = r.keyResolver(...f);
+      if (r.cache.has(o)) return r.cache.get(o);
+      if (r._inflight.has(o)) return r._inflight.get(o);
+      const a = e(...f);
+      if (a && typeof a.then == "function") {
+        const h = a.then(
+          (E) => {
+            try {
+              r.cache.set(o, E, { ttl: t, weight: n });
+            } catch {
+            }
+            return r._inflight.delete(o), E;
+          },
+          (E) => {
+            throw r._inflight.delete(o), E;
+          }
+        );
+        return r._inflight.set(o, h), h;
+      }
+      return r.cache.set(o, a, { ttl: t, weight: n }), a;
+    };
+  }
+  /**
+   * Public API to memoize an arbitrary function using this PowerMemoizer instance's cache.
+   * Mirrors the behavior used by the constructor when a function is supplied —
+   * returns a callable memoized function with helpers attached (\`get\`, \`has\`, \`delete\`, \`clear\`, \`stats\`, \`cache\`).
+   * @param {Function} fn - Function to memoize
+   * @param {Object} [options] - Optional per-wrapper options { ttl, weight }
+   * @returns {Function} Memoized function
+   */
+  memoize(e, t = {}) {
+    if (typeof e != "function") throw new TypeError("fn must be a function");
+    const n = t && (Object.prototype.hasOwnProperty.call(t, "ttl") || Object.prototype.hasOwnProperty.call(t, "weight")) ? t : this._defaultMemoizeOptions, r = this._memoize(e, n);
+    r.get = (...l) => this.get(...l), r.has = (...l) => this.has(...l), r.delete = (...l) => this.delete(...l), r.clear = () => this.clear(), r.stats = () => this.stats(), r.cache = this.cache, r.original = e;
+    try {
+      Object.setPrototypeOf(r, re.prototype), r.constructor = re;
+    } catch {
+    }
+    return r;
+  }
+  /**
+   * Retrieve a cached value for the given call args (if present).
+   * @param  {...*} args
+   * @returns {*|undefined}
+   */
+  get(...e) {
+    return this.cache.get(this.keyResolver(...e));
+  }
+  /**
+   * Check presence for the given call args.
+   * @param  {...*} args
+   * @returns {boolean}
+   */
+  has(...e) {
+    return this.cache.has(this.keyResolver(...e));
+  }
+  /**
+   * Delete the cached entry for the given call args.
+   * Also clears any inflight Promise for the key.
+   * @param  {...*} args
+   * @returns {boolean}
+   */
+  delete(...e) {
+    const t = this.keyResolver(...e);
+    return this._inflight.has(t) && this._inflight.delete(t), this.cache.delete(t);
+  }
+  /**
+   * Clear all cached entries and any inflight markers.
+   * @returns {void}
+   */
+  clear() {
+    this._inflight.clear(), this.cache.clear();
+  }
+  /**
+   * Expose underlying cache stats.
+   * @returns {Object}
+   */
+  stats() {
+    return this.cache.stats();
+  }
+}
+let Ue = null;
+if (typeof process < "u" && process.hrtime && typeof process.hrtime.bigint == "function")
+  try {
+    const i = Number(process.hrtime.bigint() / 1000000n);
+    Ue = Date.now() - i;
+  } catch {
+    Ue = null;
+  }
+class ft {
+  constructor(e = [], t = (n, r) => n < r ? -1 : n > r ? 1 : 0) {
+    if (this.data = e, this.length = this.data.length, this.compare = t, this.length > 0)
+      for (let n = (this.length >> 1) - 1; n >= 0; n--) this._down(n);
+  }
+  push(e) {
+    this.data.push(e), this._up(this.length++);
+  }
+  pop() {
+    if (this.length === 0) return;
+    const e = this.data[0], t = this.data.pop();
+    return --this.length > 0 && (this.data[0] = t, this._down(0)), e;
+  }
+  peek() {
+    return this.data[0];
+  }
+  _up(e) {
+    const { data: t, compare: n } = this, r = t[e];
+    for (; e > 0; ) {
+      const l = e - 1 >> 1, f = t[l];
+      if (n(r, f) >= 0) break;
+      t[e] = f, e = l;
+    }
+    t[e] = r;
+  }
+  _down(e) {
+    const { data: t, compare: n } = this, r = this.length >> 1, l = t[e];
+    for (; e < r; ) {
+      let f = (e << 1) + 1;
+      const o = f + 1;
+      if (o < this.length && n(t[o], t[f]) < 0 && (f = o), n(t[f], l) >= 0) break;
+      t[e] = t[f], e = f;
+    }
+    t[e] = l;
+  }
+}
+function at(i, e = 1, t = !1) {
+  let n = 1 / 0, r = 1 / 0, l = -1 / 0, f = -1 / 0;
+  for (const [B, _] of i[0])
+    B < n && (n = B), _ < r && (r = _), B > l && (l = B), _ > f && (f = _);
+  const o = l - n, a = f - r, h = Math.max(e, Math.min(o, a));
+  if (h === e) {
+    const B = [n, r];
+    return B.distance = 0, B;
+  }
+  const E = new ft([], (B, _) => _.max - B.max);
+  let S = pt(i);
+  const A = new Ee(n + o / 2, r + a / 2, 0, i);
+  A.d > S.d && (S = A);
+  let N = 2;
+  function O(B, _, j) {
+    const W = new Ee(B, _, j, i);
+    N++, W.max > S.d + e && E.push(W), W.d > S.d && (S = W, t && console.log(\`found best \${Math.round(1e4 * W.d) / 1e4} after \${N} probes\`));
+  }
+  let b = h / 2;
+  for (let B = n; B < l; B += h)
+    for (let _ = r; _ < f; _ += h)
+      O(B + b, _ + b, b);
+  for (; E.length; ) {
+    const { max: B, x: _, y: j, h: W } = E.pop();
+    if (B - S.d <= e) break;
+    b = W / 2, O(_ - b, j - b, b), O(_ + b, j - b, b), O(_ - b, j + b, b), O(_ + b, j + b, b);
+  }
+  t && console.log(\`num probes: \${N}
+best distance: \${S.d}\`);
+  const k = [S.x, S.y];
+  return k.distance = S.d, k;
+}
+function Ee(i, e, t, n) {
+  this.x = i, this.y = e, this.h = t, this.d = ct(i, e, n), this.max = this.d + this.h * Math.SQRT2;
+}
+function ct(i, e, t) {
+  let n = !1, r = 1 / 0;
+  for (const l of t)
+    for (let f = 0, o = l.length, a = o - 1; f < o; a = f++) {
+      const h = l[f], E = l[a];
+      h[1] > e != E[1] > e && i < (E[0] - h[0]) * (e - h[1]) / (E[1] - h[1]) + h[0] && (n = !n), r = Math.min(r, gt(i, e, h, E));
+    }
+  return r === 0 ? 0 : (n ? 1 : -1) * Math.sqrt(r);
+}
+function pt(i) {
+  let e = 0, t = 0, n = 0;
+  const r = i[0];
+  for (let f = 0, o = r.length, a = o - 1; f < o; a = f++) {
+    const h = r[f], E = r[a], S = h[0] * E[1] - E[0] * h[1];
+    t += (h[0] + E[0]) * S, n += (h[1] + E[1]) * S, e += S * 3;
+  }
+  const l = new Ee(t / e, n / e, 0, i);
+  return e === 0 || l.d < 0 ? new Ee(r[0][0], r[0][1], 0, i) : l;
+}
+function gt(i, e, t, n) {
+  let r = t[0], l = t[1], f = n[0] - r, o = n[1] - l;
+  if (f !== 0 || o !== 0) {
+    const a = ((i - r) * f + (e - l) * o) / (f * f + o * o);
+    a > 1 ? (r = n[0], l = n[1]) : a > 0 && (r += f * a, l += o * a);
+  }
+  return f = i - r, o = e - l, f * f + o * o;
+}
+var Ve = 63710088e-1;
+function _e(i, e, t = {}) {
+  const n = { type: "Feature" };
+  return (t.id === 0 || t.id) && (n.id = t.id), t.bbox && (n.bbox = t.bbox), n.properties = e || {}, n.geometry = i, n;
+}
+function yt(i, e, t = {}) {
+  for (const r of i) {
+    if (r.length < 4)
+      throw new Error(
+        "Each LinearRing of a Polygon must have 4 or more Positions."
+      );
+    if (r[r.length - 1].length !== r[0].length)
+      throw new Error("First and last Position are not equivalent.");
+    for (let l = 0; l < r[r.length - 1].length; l++)
+      if (r[r.length - 1][l] !== r[0][l])
+        throw new Error("First and last Position are not equivalent.");
+  }
+  return _e({
+    type: "Polygon",
+    coordinates: i
+  }, e, t);
+}
+function dt(i, e = {}) {
+  const t = { type: "FeatureCollection" };
+  return e.id && (t.id = e.id), e.bbox && (t.bbox = e.bbox), t.features = i, t;
+}
+function mt(i, e, t = {}) {
+  return _e({
+    type: "MultiPolygon",
+    coordinates: i
+  }, e, t);
+}
+function De(i, e) {
+  var t, n, r, l, f, o, a, h, E, S, A = 0, N = i.type === "FeatureCollection", O = i.type === "Feature", b = N ? i.features.length : 1;
+  for (t = 0; t < b; t++) {
+    for (o = N ? (
+      // @ts-expect-error: Known type conflict
+      i.features[t].geometry
+    ) : O ? (
+      // @ts-expect-error: Known type conflict
+      i.geometry
+    ) : i, h = N ? (
+      // @ts-expect-error: Known type conflict
+      i.features[t].properties
+    ) : O ? (
+      // @ts-expect-error: Known type conflict
+      i.properties
+    ) : {}, E = N ? (
+      // @ts-expect-error: Known type conflict
+      i.features[t].bbox
+    ) : O ? (
+      // @ts-expect-error: Known type conflict
+      i.bbox
+    ) : void 0, S = N ? (
+      // @ts-expect-error: Known type conflict
+      i.features[t].id
+    ) : O ? (
+      // @ts-expect-error: Known type conflict
+      i.id
+    ) : void 0, a = o ? o.type === "GeometryCollection" : !1, f = a ? o.geometries.length : 1, r = 0; r < f; r++) {
+      if (l = a ? o.geometries[r] : o, l === null) {
+        if (
+          // @ts-expect-error: Known type conflict
+          e(
+            // @ts-expect-error: Known type conflict
+            null,
+            A,
+            h,
+            E,
+            S
+          ) === !1
+        )
+          return !1;
+        continue;
+      }
+      switch (l.type) {
+        case "Point":
+        case "LineString":
+        case "MultiPoint":
+        case "Polygon":
+        case "MultiLineString":
+        case "MultiPolygon": {
+          if (
+            // @ts-expect-error: Known type conflict
+            e(
+              l,
+              A,
+              h,
+              E,
+              S
+            ) === !1
+          )
+            return !1;
+          break;
+        }
+        case "GeometryCollection": {
+          for (n = 0; n < l.geometries.length; n++)
+            if (
+              // @ts-expect-error: Known type conflict
+              e(
+                l.geometries[n],
+                A,
+                h,
+                E,
+                S
+              ) === !1
+            )
+              return !1;
+          break;
+        }
+        default:
+          throw new Error("Unknown Geometry Type");
+      }
+    }
+    A++;
+  }
+}
+function xt(i, e, t) {
+  var n = t;
+  return De(
+    i,
+    function(r, l, f, o, a) {
+      l === 0 && t === void 0 ? n = r : n = e(
+        // @ts-expect-error: Known type conflict
+        n,
+        r,
+        l,
+        f,
+        o,
+        a
+      );
+    }
+  ), n;
+}
+function wt(i, e) {
+  De(i, function(t, n, r, l, f) {
+    var o = t === null ? null : t.type;
+    switch (o) {
+      case null:
+      case "Point":
+      case "LineString":
+      case "Polygon":
+        return (
+          // @ts-expect-error: Known type conflict
+          e(
+            _e(t, r, { bbox: l, id: f }),
+            n,
+            0
+          ) === !1 ? !1 : void 0
+        );
+    }
+    var a;
+    switch (o) {
+      case "MultiPoint":
+        a = "Point";
+        break;
+      case "MultiLineString":
+        a = "LineString";
+        break;
+      case "MultiPolygon":
+        a = "Polygon";
+        break;
+    }
+    for (
+      var h = 0;
+      // @ts-expect-error: Known type conflict
+      h < t.coordinates.length;
+      h++
+    ) {
+      var E = t.coordinates[h], S = {
+        type: a,
+        coordinates: E
+      };
+      if (
+        // @ts-expect-error: Known type conflict
+        e(_e(S, r), n, h) === !1
+      )
+        return !1;
+    }
+  });
+}
+function vt(i) {
+  return xt(
+    i,
+    (e, t) => e + Et(t),
+    0
+  );
+}
+function Et(i) {
+  let e = 0, t;
+  switch (i.type) {
+    case "Polygon":
+      return $e(i.coordinates);
+    case "MultiPolygon":
+      for (t = 0; t < i.coordinates.length; t++)
+        e += $e(i.coordinates[t]);
+      return e;
+    case "Point":
+    case "MultiPoint":
+    case "LineString":
+    case "MultiLineString":
+      return 0;
+  }
+  return 0;
+}
+function $e(i) {
+  let e = 0;
+  if (i && i.length > 0) {
+    e += Math.abs(je(i[0]));
+    for (let t = 1; t < i.length; t++)
+      e -= Math.abs(je(i[t]));
+  }
+  return e;
+}
+var _t = Ve * Ve / 2, Ne = Math.PI / 180;
+function je(i) {
+  const e = i.length - 1;
+  if (e <= 2) return 0;
+  let t = 0, n = 0;
+  for (; n < e; ) {
+    const r = i[n], l = i[n + 1 === e ? 0 : n + 1], f = i[n + 2 >= e ? (n + 2) % e : n + 2], o = r[0] * Ne, a = l[1] * Ne, h = f[0] * Ne;
+    t += (h - o) * Math.sin(a), n++;
+  }
+  return t * _t;
+}
+var St = /^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i, Oe = Math.ceil, H = Math.floor, $ = "[BigNumber Error] ", We = $ + "Number primitive has more than 15 significant digits: ", J = 1e14, R = 14, Ce = 9007199254740991, Ie = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], ue = 1e7, D = 1e9;
 function Qe(i) {
-  var e, t, n, r = S.prototype = { constructor: S, toString: null, valueOf: null }, u = new S(1), a = 20, f = 4, E = -7, p = 21, _ = -1e7, T = 1e7, b = !1, A = 1, N = 0, O = {
+  var e, t, n, r = _.prototype = { constructor: _, toString: null, valueOf: null }, l = new _(1), f = 20, o = 4, a = -7, h = 21, E = -1e7, S = 1e7, A = !1, N = 1, O = 0, b = {
     prefix: "",
     groupSize: 3,
     secondaryGroupSize: 0,
@@ -258,418 +2598,418 @@ function Qe(i) {
     fractionGroupSeparator: " ",
     // non-breaking space
     suffix: ""
-  }, B = "0123456789abcdefghijklmnopqrstuvwxyz", k = !0;
-  function S(s, o) {
-    var l, m, c, y, w, h, g, x, d = this;
-    if (!(d instanceof S)) return new S(s, o);
-    if (o == null) {
+  }, k = "0123456789abcdefghijklmnopqrstuvwxyz", B = !0;
+  function _(s, u) {
+    var c, x, g, d, v, p, y, w, m = this;
+    if (!(m instanceof _)) return new _(s, u);
+    if (u == null) {
       if (s && s._isBigNumber === !0) {
-        d.s = s.s, !s.c || s.e > T ? d.c = d.e = null : s.e < _ ? d.c = [d.e = 0] : (d.e = s.e, d.c = s.c.slice());
+        m.s = s.s, !s.c || s.e > S ? m.c = m.e = null : s.e < E ? m.c = [m.e = 0] : (m.e = s.e, m.c = s.c.slice());
         return;
       }
-      if ((h = typeof s == "number") && s * 0 == 0) {
-        if (d.s = 1 / s < 0 ? (s = -s, -1) : 1, s === ~~s) {
-          for (y = 0, w = s; w >= 10; w /= 10, y++) ;
-          y > T ? d.c = d.e = null : (d.e = y, d.c = [s]);
+      if ((p = typeof s == "number") && s * 0 == 0) {
+        if (m.s = 1 / s < 0 ? (s = -s, -1) : 1, s === ~~s) {
+          for (d = 0, v = s; v >= 10; v /= 10, d++) ;
+          d > S ? m.c = m.e = null : (m.e = d, m.c = [s]);
           return;
         }
-        x = String(s);
+        w = String(s);
       } else {
-        if (!rt.test(x = String(s))) return n(d, x, h);
-        d.s = x.charCodeAt(0) == 45 ? (x = x.slice(1), -1) : 1;
+        if (!St.test(w = String(s))) return n(m, w, p);
+        m.s = w.charCodeAt(0) == 45 ? (w = w.slice(1), -1) : 1;
       }
-      (y = x.indexOf(".")) > -1 && (x = x.replace(".", "")), (w = x.search(/e/i)) > 0 ? (y < 0 && (y = w), y += +x.slice(w + 1), x = x.substring(0, w)) : y < 0 && (y = x.length);
+      (d = w.indexOf(".")) > -1 && (w = w.replace(".", "")), (v = w.search(/e/i)) > 0 ? (d < 0 && (d = v), d += +w.slice(v + 1), w = w.substring(0, v)) : d < 0 && (d = w.length);
     } else {
-      if (G(o, 2, B.length, "Base"), o == 10 && k)
-        return d = new S(s), j(d, a + d.e + 1, f);
-      if (x = String(s), h = typeof s == "number") {
-        if (s * 0 != 0) return n(d, x, h, o);
-        if (d.s = 1 / s < 0 ? (x = x.slice(1), -1) : 1, S.DEBUG && x.replace(/^0\\.0*|\\./, "").length > 15)
-          throw Error(De + s);
+      if (F(u, 2, k.length, "Base"), u == 10 && B)
+        return m = new _(s), X(m, f + m.e + 1, o);
+      if (w = String(s), p = typeof s == "number") {
+        if (s * 0 != 0) return n(m, w, p, u);
+        if (m.s = 1 / s < 0 ? (w = w.slice(1), -1) : 1, _.DEBUG && w.replace(/^0\\.0*|\\./, "").length > 15)
+          throw Error(We + s);
       } else
-        d.s = x.charCodeAt(0) === 45 ? (x = x.slice(1), -1) : 1;
-      for (l = B.slice(0, o), y = w = 0, g = x.length; w < g; w++)
-        if (l.indexOf(m = x.charAt(w)) < 0) {
-          if (m == ".") {
-            if (w > y) {
-              y = g;
+        m.s = w.charCodeAt(0) === 45 ? (w = w.slice(1), -1) : 1;
+      for (c = k.slice(0, u), d = v = 0, y = w.length; v < y; v++)
+        if (c.indexOf(x = w.charAt(v)) < 0) {
+          if (x == ".") {
+            if (v > d) {
+              d = y;
               continue;
             }
-          } else if (!c && (x == x.toUpperCase() && (x = x.toLowerCase()) || x == x.toLowerCase() && (x = x.toUpperCase()))) {
-            c = !0, w = -1, y = 0;
+          } else if (!g && (w == w.toUpperCase() && (w = w.toLowerCase()) || w == w.toLowerCase() && (w = w.toUpperCase()))) {
+            g = !0, v = -1, d = 0;
             continue;
           }
-          return n(d, String(s), h, o);
+          return n(m, String(s), p, u);
         }
-      h = !1, x = t(x, o, 10, d.s), (y = x.indexOf(".")) > -1 ? x = x.replace(".", "") : y = x.length;
+      p = !1, w = t(w, u, 10, m.s), (d = w.indexOf(".")) > -1 ? w = w.replace(".", "") : d = w.length;
     }
-    for (w = 0; x.charCodeAt(w) === 48; w++) ;
-    for (g = x.length; x.charCodeAt(--g) === 48; ) ;
-    if (x = x.slice(w, ++g)) {
-      if (g -= w, h && S.DEBUG && g > 15 && (s > Oe || s !== Y(s)))
-        throw Error(De + d.s * s);
-      if ((y = y - w - 1) > T)
-        d.c = d.e = null;
-      else if (y < _)
-        d.c = [d.e = 0];
+    for (v = 0; w.charCodeAt(v) === 48; v++) ;
+    for (y = w.length; w.charCodeAt(--y) === 48; ) ;
+    if (w = w.slice(v, ++y)) {
+      if (y -= v, p && _.DEBUG && y > 15 && (s > Ce || s !== H(s)))
+        throw Error(We + m.s * s);
+      if ((d = d - v - 1) > S)
+        m.c = m.e = null;
+      else if (d < E)
+        m.c = [m.e = 0];
       else {
-        if (d.e = y, d.c = [], w = (y + 1) % P, y < 0 && (w += P), w < g) {
-          for (w && d.c.push(+x.slice(0, w)), g -= P; w < g; )
-            d.c.push(+x.slice(w, w += P));
-          w = P - (x = x.slice(w)).length;
+        if (m.e = d, m.c = [], v = (d + 1) % R, d < 0 && (v += R), v < y) {
+          for (v && m.c.push(+w.slice(0, v)), y -= R; v < y; )
+            m.c.push(+w.slice(v, v += R));
+          v = R - (w = w.slice(v)).length;
         } else
-          w -= g;
-        for (; w--; x += "0") ;
-        d.c.push(+x);
+          v -= y;
+        for (; v--; w += "0") ;
+        m.c.push(+w);
       }
     } else
-      d.c = [d.e = 0];
+      m.c = [m.e = 0];
   }
-  S.clone = Qe, S.ROUND_UP = 0, S.ROUND_DOWN = 1, S.ROUND_CEIL = 2, S.ROUND_FLOOR = 3, S.ROUND_HALF_UP = 4, S.ROUND_HALF_DOWN = 5, S.ROUND_HALF_EVEN = 6, S.ROUND_HALF_CEIL = 7, S.ROUND_HALF_FLOOR = 8, S.EUCLID = 9, S.config = S.set = function(s) {
-    var o, l;
+  _.clone = Qe, _.ROUND_UP = 0, _.ROUND_DOWN = 1, _.ROUND_CEIL = 2, _.ROUND_FLOOR = 3, _.ROUND_HALF_UP = 4, _.ROUND_HALF_DOWN = 5, _.ROUND_HALF_EVEN = 6, _.ROUND_HALF_CEIL = 7, _.ROUND_HALF_FLOOR = 8, _.EUCLID = 9, _.config = _.set = function(s) {
+    var u, c;
     if (s != null)
       if (typeof s == "object") {
-        if (s.hasOwnProperty(o = "DECIMAL_PLACES") && (l = s[o], G(l, 0, U, o), a = l), s.hasOwnProperty(o = "ROUNDING_MODE") && (l = s[o], G(l, 0, 8, o), f = l), s.hasOwnProperty(o = "EXPONENTIAL_AT") && (l = s[o], l && l.pop ? (G(l[0], -U, 0, o), G(l[1], 0, U, o), E = l[0], p = l[1]) : (G(l, -U, U, o), E = -(p = l < 0 ? -l : l))), s.hasOwnProperty(o = "RANGE"))
-          if (l = s[o], l && l.pop)
-            G(l[0], -U, -1, o), G(l[1], 1, U, o), _ = l[0], T = l[1];
-          else if (G(l, -U, U, o), l)
-            _ = -(T = l < 0 ? -l : l);
+        if (s.hasOwnProperty(u = "DECIMAL_PLACES") && (c = s[u], F(c, 0, D, u), f = c), s.hasOwnProperty(u = "ROUNDING_MODE") && (c = s[u], F(c, 0, 8, u), o = c), s.hasOwnProperty(u = "EXPONENTIAL_AT") && (c = s[u], c && c.pop ? (F(c[0], -D, 0, u), F(c[1], 0, D, u), a = c[0], h = c[1]) : (F(c, -D, D, u), a = -(h = c < 0 ? -c : c))), s.hasOwnProperty(u = "RANGE"))
+          if (c = s[u], c && c.pop)
+            F(c[0], -D, -1, u), F(c[1], 1, D, u), E = c[0], S = c[1];
+          else if (F(c, -D, D, u), c)
+            E = -(S = c < 0 ? -c : c);
           else
-            throw Error(V + o + " cannot be zero: " + l);
-        if (s.hasOwnProperty(o = "CRYPTO"))
-          if (l = s[o], l === !!l)
-            if (l)
+            throw Error($ + u + " cannot be zero: " + c);
+        if (s.hasOwnProperty(u = "CRYPTO"))
+          if (c = s[u], c === !!c)
+            if (c)
               if (typeof crypto < "u" && crypto && (crypto.getRandomValues || crypto.randomBytes))
-                b = l;
+                A = c;
               else
-                throw b = !l, Error(V + "crypto unavailable");
+                throw A = !c, Error($ + "crypto unavailable");
             else
-              b = l;
+              A = c;
           else
-            throw Error(V + o + " not true or false: " + l);
-        if (s.hasOwnProperty(o = "MODULO_MODE") && (l = s[o], G(l, 0, 9, o), A = l), s.hasOwnProperty(o = "POW_PRECISION") && (l = s[o], G(l, 0, U, o), N = l), s.hasOwnProperty(o = "FORMAT"))
-          if (l = s[o], typeof l == "object") O = l;
-          else throw Error(V + o + " not an object: " + l);
-        if (s.hasOwnProperty(o = "ALPHABET"))
-          if (l = s[o], typeof l == "string" && !/^.?$|[+\\-.\\s]|(.).*\\1/.test(l))
-            k = l.slice(0, 10) == "0123456789", B = l;
+            throw Error($ + u + " not true or false: " + c);
+        if (s.hasOwnProperty(u = "MODULO_MODE") && (c = s[u], F(c, 0, 9, u), N = c), s.hasOwnProperty(u = "POW_PRECISION") && (c = s[u], F(c, 0, D, u), O = c), s.hasOwnProperty(u = "FORMAT"))
+          if (c = s[u], typeof c == "object") b = c;
+          else throw Error($ + u + " not an object: " + c);
+        if (s.hasOwnProperty(u = "ALPHABET"))
+          if (c = s[u], typeof c == "string" && !/^.?$|[+\\-.\\s]|(.).*\\1/.test(c))
+            B = c.slice(0, 10) == "0123456789", k = c;
           else
-            throw Error(V + o + " invalid: " + l);
+            throw Error($ + u + " invalid: " + c);
       } else
-        throw Error(V + "Object expected: " + s);
+        throw Error($ + "Object expected: " + s);
     return {
-      DECIMAL_PLACES: a,
-      ROUNDING_MODE: f,
-      EXPONENTIAL_AT: [E, p],
-      RANGE: [_, T],
-      CRYPTO: b,
-      MODULO_MODE: A,
-      POW_PRECISION: N,
-      FORMAT: O,
-      ALPHABET: B
+      DECIMAL_PLACES: f,
+      ROUNDING_MODE: o,
+      EXPONENTIAL_AT: [a, h],
+      RANGE: [E, S],
+      CRYPTO: A,
+      MODULO_MODE: N,
+      POW_PRECISION: O,
+      FORMAT: b,
+      ALPHABET: k
     };
-  }, S.isBigNumber = function(s) {
+  }, _.isBigNumber = function(s) {
     if (!s || s._isBigNumber !== !0) return !1;
-    if (!S.DEBUG) return !0;
-    var o, l, m = s.c, c = s.e, y = s.s;
-    e: if ({}.toString.call(m) == "[object Array]") {
-      if ((y === 1 || y === -1) && c >= -U && c <= U && c === Y(c)) {
-        if (m[0] === 0) {
-          if (c === 0 && m.length === 1) return !0;
+    if (!_.DEBUG) return !0;
+    var u, c, x = s.c, g = s.e, d = s.s;
+    e: if ({}.toString.call(x) == "[object Array]") {
+      if ((d === 1 || d === -1) && g >= -D && g <= D && g === H(g)) {
+        if (x[0] === 0) {
+          if (g === 0 && x.length === 1) return !0;
           break e;
         }
-        if (o = (c + 1) % P, o < 1 && (o += P), String(m[0]).length == o) {
-          for (o = 0; o < m.length; o++)
-            if (l = m[o], l < 0 || l >= W || l !== Y(l)) break e;
-          if (l !== 0) return !0;
+        if (u = (g + 1) % R, u < 1 && (u += R), String(x[0]).length == u) {
+          for (u = 0; u < x.length; u++)
+            if (c = x[u], c < 0 || c >= J || c !== H(c)) break e;
+          if (c !== 0) return !0;
         }
       }
-    } else if (m === null && c === null && (y === null || y === 1 || y === -1))
+    } else if (x === null && g === null && (d === null || d === 1 || d === -1))
       return !0;
-    throw Error(V + "Invalid BigNumber: " + s);
-  }, S.maximum = S.max = function() {
-    return J(arguments, -1);
-  }, S.minimum = S.min = function() {
-    return J(arguments, 1);
-  }, S.random = (function() {
-    var s = 9007199254740992, o = Math.random() * s & 2097151 ? function() {
-      return Y(Math.random() * s);
+    throw Error($ + "Invalid BigNumber: " + s);
+  }, _.maximum = _.max = function() {
+    return W(arguments, -1);
+  }, _.minimum = _.min = function() {
+    return W(arguments, 1);
+  }, _.random = (function() {
+    var s = 9007199254740992, u = Math.random() * s & 2097151 ? function() {
+      return H(Math.random() * s);
     } : function() {
       return (Math.random() * 1073741824 | 0) * 8388608 + (Math.random() * 8388608 | 0);
     };
-    return function(l) {
-      var m, c, y, w, h, g = 0, x = [], d = new S(u);
-      if (l == null ? l = a : G(l, 0, U), w = Pe(l / P), b)
+    return function(c) {
+      var x, g, d, v, p, y = 0, w = [], m = new _(l);
+      if (c == null ? c = f : F(c, 0, D), v = Oe(c / R), A)
         if (crypto.getRandomValues) {
-          for (m = crypto.getRandomValues(new Uint32Array(w *= 2)); g < w; )
-            h = m[g] * 131072 + (m[g + 1] >>> 11), h >= 9e15 ? (c = crypto.getRandomValues(new Uint32Array(2)), m[g] = c[0], m[g + 1] = c[1]) : (x.push(h % 1e14), g += 2);
-          g = w / 2;
+          for (x = crypto.getRandomValues(new Uint32Array(v *= 2)); y < v; )
+            p = x[y] * 131072 + (x[y + 1] >>> 11), p >= 9e15 ? (g = crypto.getRandomValues(new Uint32Array(2)), x[y] = g[0], x[y + 1] = g[1]) : (w.push(p % 1e14), y += 2);
+          y = v / 2;
         } else if (crypto.randomBytes) {
-          for (m = crypto.randomBytes(w *= 7); g < w; )
-            h = (m[g] & 31) * 281474976710656 + m[g + 1] * 1099511627776 + m[g + 2] * 4294967296 + m[g + 3] * 16777216 + (m[g + 4] << 16) + (m[g + 5] << 8) + m[g + 6], h >= 9e15 ? crypto.randomBytes(7).copy(m, g) : (x.push(h % 1e14), g += 7);
-          g = w / 7;
+          for (x = crypto.randomBytes(v *= 7); y < v; )
+            p = (x[y] & 31) * 281474976710656 + x[y + 1] * 1099511627776 + x[y + 2] * 4294967296 + x[y + 3] * 16777216 + (x[y + 4] << 16) + (x[y + 5] << 8) + x[y + 6], p >= 9e15 ? crypto.randomBytes(7).copy(x, y) : (w.push(p % 1e14), y += 7);
+          y = v / 7;
         } else
-          throw b = !1, Error(V + "crypto unavailable");
-      if (!b)
-        for (; g < w; )
-          h = o(), h < 9e15 && (x[g++] = h % 1e14);
-      for (w = x[--g], l %= P, w && l && (h = Ae[P - l], x[g] = Y(w / h) * h); x[g] === 0; x.pop(), g--) ;
-      if (g < 0)
-        x = [y = 0];
+          throw A = !1, Error($ + "crypto unavailable");
+      if (!A)
+        for (; y < v; )
+          p = u(), p < 9e15 && (w[y++] = p % 1e14);
+      for (v = w[--y], c %= R, v && c && (p = Ie[R - c], w[y] = H(v / p) * p); w[y] === 0; w.pop(), y--) ;
+      if (y < 0)
+        w = [d = 0];
       else {
-        for (y = -1; x[0] === 0; x.splice(0, 1), y -= P) ;
-        for (g = 1, h = x[0]; h >= 10; h /= 10, g++) ;
-        g < P && (y -= P - g);
+        for (d = -1; w[0] === 0; w.splice(0, 1), d -= R) ;
+        for (y = 1, p = w[0]; p >= 10; p /= 10, y++) ;
+        y < R && (d -= R - y);
       }
-      return d.e = y, d.c = x, d;
+      return m.e = d, m.c = w, m;
     };
-  })(), S.sum = function() {
-    for (var s = 1, o = arguments, l = new S(o[0]); s < o.length; ) l = l.plus(o[s++]);
-    return l;
+  })(), _.sum = function() {
+    for (var s = 1, u = arguments, c = new _(u[0]); s < u.length; ) c = c.plus(u[s++]);
+    return c;
   }, t = /* @__PURE__ */ (function() {
     var s = "0123456789";
-    function o(l, m, c, y) {
-      for (var w, h = [0], g, x = 0, d = l.length; x < d; ) {
-        for (g = h.length; g--; h[g] *= m) ;
-        for (h[0] += y.indexOf(l.charAt(x++)), w = 0; w < h.length; w++)
-          h[w] > c - 1 && (h[w + 1] == null && (h[w + 1] = 0), h[w + 1] += h[w] / c | 0, h[w] %= c);
+    function u(c, x, g, d) {
+      for (var v, p = [0], y, w = 0, m = c.length; w < m; ) {
+        for (y = p.length; y--; p[y] *= x) ;
+        for (p[0] += d.indexOf(c.charAt(w++)), v = 0; v < p.length; v++)
+          p[v] > g - 1 && (p[v + 1] == null && (p[v + 1] = 0), p[v + 1] += p[v] / g | 0, p[v] %= g);
       }
-      return h.reverse();
+      return p.reverse();
     }
-    return function(l, m, c, y, w) {
-      var h, g, x, d, v, R, M, I, q = l.indexOf("."), D = a, L = f;
-      for (q >= 0 && (d = N, N = 0, l = l.replace(".", ""), I = new S(m), R = I.pow(l.length - q), N = d, I.c = o(
-        ne(X(R.c), R.e, "0"),
+    return function(c, x, g, d, v) {
+      var p, y, w, m, T, P, M, I, G = c.indexOf("."), q = f, C = o;
+      for (G >= 0 && (m = O, O = 0, c = c.replace(".", ""), I = new _(x), P = I.pow(c.length - G), O = m, I.c = u(
+        ne(Y(P.c), P.e, "0"),
         10,
-        c,
+        g,
         s
-      ), I.e = I.c.length), M = o(l, m, c, w ? (h = B, s) : (h = s, B)), x = d = M.length; M[--d] == 0; M.pop()) ;
-      if (!M[0]) return h.charAt(0);
-      if (q < 0 ? --x : (R.c = M, R.e = x, R.s = y, R = e(R, I, D, L, c), M = R.c, v = R.r, x = R.e), g = x + D + 1, q = M[g], d = c / 2, v = v || g < 0 || M[g + 1] != null, v = L < 4 ? (q != null || v) && (L == 0 || L == (R.s < 0 ? 3 : 2)) : q > d || q == d && (L == 4 || v || L == 6 && M[g - 1] & 1 || L == (R.s < 0 ? 8 : 7)), g < 1 || !M[0])
-        l = v ? ne(h.charAt(1), -D, h.charAt(0)) : h.charAt(0);
+      ), I.e = I.c.length), M = u(c, x, g, v ? (p = k, s) : (p = s, k)), w = m = M.length; M[--m] == 0; M.pop()) ;
+      if (!M[0]) return p.charAt(0);
+      if (G < 0 ? --w : (P.c = M, P.e = w, P.s = d, P = e(P, I, q, C, g), M = P.c, T = P.r, w = P.e), y = w + q + 1, G = M[y], m = g / 2, T = T || y < 0 || M[y + 1] != null, T = C < 4 ? (G != null || T) && (C == 0 || C == (P.s < 0 ? 3 : 2)) : G > m || G == m && (C == 4 || T || C == 6 && M[y - 1] & 1 || C == (P.s < 0 ? 8 : 7)), y < 1 || !M[0])
+        c = T ? ne(p.charAt(1), -q, p.charAt(0)) : p.charAt(0);
       else {
-        if (M.length = g, v)
-          for (--c; ++M[--g] > c; )
-            M[g] = 0, g || (++x, M = [1].concat(M));
-        for (d = M.length; !M[--d]; ) ;
-        for (q = 0, l = ""; q <= d; l += h.charAt(M[q++])) ;
-        l = ne(l, x, h.charAt(0));
+        if (M.length = y, T)
+          for (--g; ++M[--y] > g; )
+            M[y] = 0, y || (++w, M = [1].concat(M));
+        for (m = M.length; !M[--m]; ) ;
+        for (G = 0, c = ""; G <= m; c += p.charAt(M[G++])) ;
+        c = ne(c, w, p.charAt(0));
       }
-      return l;
+      return c;
     };
   })(), e = /* @__PURE__ */ (function() {
-    function s(m, c, y) {
-      var w, h, g, x, d = 0, v = m.length, R = c % se, M = c / se | 0;
-      for (m = m.slice(); v--; )
-        g = m[v] % se, x = m[v] / se | 0, w = M * g + x * R, h = R * g + w % se * se + d, d = (h / y | 0) + (w / se | 0) + M * x, m[v] = h % y;
-      return d && (m = [d].concat(m)), m;
+    function s(x, g, d) {
+      var v, p, y, w, m = 0, T = x.length, P = g % ue, M = g / ue | 0;
+      for (x = x.slice(); T--; )
+        y = x[T] % ue, w = x[T] / ue | 0, v = M * y + w * P, p = P * y + v % ue * ue + m, m = (p / d | 0) + (v / ue | 0) + M * w, x[T] = p % d;
+      return m && (x = [m].concat(x)), x;
     }
-    function o(m, c, y, w) {
-      var h, g;
-      if (y != w)
-        g = y > w ? 1 : -1;
+    function u(x, g, d, v) {
+      var p, y;
+      if (d != v)
+        y = d > v ? 1 : -1;
       else
-        for (h = g = 0; h < y; h++)
-          if (m[h] != c[h]) {
-            g = m[h] > c[h] ? 1 : -1;
+        for (p = y = 0; p < d; p++)
+          if (x[p] != g[p]) {
+            y = x[p] > g[p] ? 1 : -1;
             break;
           }
-      return g;
+      return y;
     }
-    function l(m, c, y, w) {
-      for (var h = 0; y--; )
-        m[y] -= h, h = m[y] < c[y] ? 1 : 0, m[y] = h * w + m[y] - c[y];
-      for (; !m[0] && m.length > 1; m.splice(0, 1)) ;
+    function c(x, g, d, v) {
+      for (var p = 0; d--; )
+        x[d] -= p, p = x[d] < g[d] ? 1 : 0, x[d] = p * v + x[d] - g[d];
+      for (; !x[0] && x.length > 1; x.splice(0, 1)) ;
     }
-    return function(m, c, y, w, h) {
-      var g, x, d, v, R, M, I, q, D, L, C, z, ge, Re, Me, Q, fe, K = m.s == c.s ? 1 : -1, $ = m.c, F = c.c;
-      if (!$ || !$[0] || !F || !F[0])
-        return new S(
+    return function(x, g, d, v, p) {
+      var y, w, m, T, P, M, I, G, q, C, L, U, de, be, Re, Q, fe, K = x.s == g.s ? 1 : -1, V = x.c, z = g.c;
+      if (!V || !V[0] || !z || !z[0])
+        return new _(
           // Return NaN if either NaN, or both Infinity or 0.
-          !m.s || !c.s || ($ ? F && $[0] == F[0] : !F) ? NaN : (
+          !x.s || !g.s || (V ? z && V[0] == z[0] : !z) ? NaN : (
             // Return ±0 if x is ±0 or y is ±Infinity, or return ±Infinity as y is ±0.
-            $ && $[0] == 0 || !F ? K * 0 : K / 0
+            V && V[0] == 0 || !z ? K * 0 : K / 0
           )
         );
-      for (q = new S(K), D = q.c = [], x = m.e - c.e, K = y + x + 1, h || (h = W, x = H(m.e / P) - H(c.e / P), K = K / P | 0), d = 0; F[d] == ($[d] || 0); d++) ;
-      if (F[d] > ($[d] || 0) && x--, K < 0)
-        D.push(1), v = !0;
+      for (G = new _(K), q = G.c = [], w = x.e - g.e, K = d + w + 1, p || (p = J, w = Z(x.e / R) - Z(g.e / R), K = K / R | 0), m = 0; z[m] == (V[m] || 0); m++) ;
+      if (z[m] > (V[m] || 0) && w--, K < 0)
+        q.push(1), T = !0;
       else {
-        for (Re = $.length, Q = F.length, d = 0, K += 2, R = Y(h / (F[0] + 1)), R > 1 && (F = s(F, R, h), $ = s($, R, h), Q = F.length, Re = $.length), ge = Q, L = $.slice(0, Q), C = L.length; C < Q; L[C++] = 0) ;
-        fe = F.slice(), fe = [0].concat(fe), Me = F[0], F[1] >= h / 2 && Me++;
+        for (be = V.length, Q = z.length, m = 0, K += 2, P = H(p / (z[0] + 1)), P > 1 && (z = s(z, P, p), V = s(V, P, p), Q = z.length, be = V.length), de = Q, C = V.slice(0, Q), L = C.length; L < Q; C[L++] = 0) ;
+        fe = z.slice(), fe = [0].concat(fe), Re = z[0], z[1] >= p / 2 && Re++;
         do {
-          if (R = 0, g = o(F, L, Q, C), g < 0) {
-            if (z = L[0], Q != C && (z = z * h + (L[1] || 0)), R = Y(z / Me), R > 1)
-              for (R >= h && (R = h - 1), M = s(F, R, h), I = M.length, C = L.length; o(M, L, I, C) == 1; )
-                R--, l(M, Q < I ? fe : F, I, h), I = M.length, g = 1;
+          if (P = 0, y = u(z, C, Q, L), y < 0) {
+            if (U = C[0], Q != L && (U = U * p + (C[1] || 0)), P = H(U / Re), P > 1)
+              for (P >= p && (P = p - 1), M = s(z, P, p), I = M.length, L = C.length; u(M, C, I, L) == 1; )
+                P--, c(M, Q < I ? fe : z, I, p), I = M.length, y = 1;
             else
-              R == 0 && (g = R = 1), M = F.slice(), I = M.length;
-            if (I < C && (M = [0].concat(M)), l(L, M, C, h), C = L.length, g == -1)
-              for (; o(F, L, Q, C) < 1; )
-                R++, l(L, Q < C ? fe : F, C, h), C = L.length;
-          } else g === 0 && (R++, L = [0]);
-          D[d++] = R, L[0] ? L[C++] = $[ge] || 0 : (L = [$[ge]], C = 1);
-        } while ((ge++ < Re || L[0] != null) && K--);
-        v = L[0] != null, D[0] || D.splice(0, 1);
+              P == 0 && (y = P = 1), M = z.slice(), I = M.length;
+            if (I < L && (M = [0].concat(M)), c(C, M, L, p), L = C.length, y == -1)
+              for (; u(z, C, Q, L) < 1; )
+                P++, c(C, Q < L ? fe : z, L, p), L = C.length;
+          } else y === 0 && (P++, C = [0]);
+          q[m++] = P, C[0] ? C[L++] = V[de] || 0 : (C = [V[de]], L = 1);
+        } while ((de++ < be || C[0] != null) && K--);
+        T = C[0] != null, q[0] || q.splice(0, 1);
       }
-      if (h == W) {
-        for (d = 1, K = D[0]; K >= 10; K /= 10, d++) ;
-        j(q, y + (q.e = d + x * P - 1) + 1, w, v);
+      if (p == J) {
+        for (m = 1, K = q[0]; K >= 10; K /= 10, m++) ;
+        X(G, d + (G.e = m + w * R - 1) + 1, v, T);
       } else
-        q.e = x, q.r = +v;
-      return q;
+        G.e = w, G.r = +T;
+      return G;
     };
   })();
-  function Z(s, o, l, m) {
-    var c, y, w, h, g;
-    if (l == null ? l = f : G(l, 0, 8), !s.c) return s.toString();
-    if (c = s.c[0], w = s.e, o == null)
-      g = X(s.c), g = m == 1 || m == 2 && (w <= E || w >= p) ? de(g, w) : ne(g, w, "0");
-    else if (s = j(new S(s), o, l), y = s.e, g = X(s.c), h = g.length, m == 1 || m == 2 && (o <= y || y <= E)) {
-      for (; h < o; g += "0", h++) ;
-      g = de(g, y);
-    } else if (o -= w + (m === 2 && y > w), g = ne(g, y, "0"), y + 1 > h) {
-      if (--o > 0) for (g += "."; o--; g += "0") ;
-    } else if (o += y - h, o > 0)
-      for (y + 1 == h && (g += "."); o--; g += "0") ;
-    return s.s < 0 && c ? "-" + g : g;
+  function j(s, u, c, x) {
+    var g, d, v, p, y;
+    if (c == null ? c = o : F(c, 0, 8), !s.c) return s.toString();
+    if (g = s.c[0], v = s.e, u == null)
+      y = Y(s.c), y = x == 1 || x == 2 && (v <= a || v >= h) ? xe(y, v) : ne(y, v, "0");
+    else if (s = X(new _(s), u, c), d = s.e, y = Y(s.c), p = y.length, x == 1 || x == 2 && (u <= d || d <= a)) {
+      for (; p < u; y += "0", p++) ;
+      y = xe(y, d);
+    } else if (u -= v + (x === 2 && d > v), y = ne(y, d, "0"), d + 1 > p) {
+      if (--u > 0) for (y += "."; u--; y += "0") ;
+    } else if (u += d - p, u > 0)
+      for (d + 1 == p && (y += "."); u--; y += "0") ;
+    return s.s < 0 && g ? "-" + y : y;
   }
-  function J(s, o) {
-    for (var l, m, c = 1, y = new S(s[0]); c < s.length; c++)
-      m = new S(s[c]), (!m.s || (l = oe(y, m)) === o || l === 0 && y.s === o) && (y = m);
-    return y;
+  function W(s, u) {
+    for (var c, x, g = 1, d = new _(s[0]); g < s.length; g++)
+      x = new _(s[g]), (!x.s || (c = he(d, x)) === u || c === 0 && d.s === u) && (d = x);
+    return d;
   }
-  function _e(s, o, l) {
-    for (var m = 1, c = o.length; !o[--c]; o.pop()) ;
-    for (c = o[0]; c >= 10; c /= 10, m++) ;
-    return (l = m + l * P - 1) > T ? s.c = s.e = null : l < _ ? s.c = [s.e = 0] : (s.e = l, s.c = o), s;
+  function Me(s, u, c) {
+    for (var x = 1, g = u.length; !u[--g]; u.pop()) ;
+    for (g = u[0]; g >= 10; g /= 10, x++) ;
+    return (c = x + c * R - 1) > S ? s.c = s.e = null : c < E ? s.c = [s.e = 0] : (s.e = c, s.c = u), s;
   }
   n = /* @__PURE__ */ (function() {
-    var s = /^(-?)0([xbo])(?=\\w[\\w.]*$)/i, o = /^([^.]+)\\.$/, l = /^\\.([^.]+)$/, m = /^-?(Infinity|NaN)$/, c = /^\\s*\\+(?=[\\w.])|^\\s+|\\s+$/g;
-    return function(y, w, h, g) {
-      var x, d = h ? w : w.replace(c, "");
-      if (m.test(d))
-        y.s = isNaN(d) ? null : d < 0 ? -1 : 1;
+    var s = /^(-?)0([xbo])(?=\\w[\\w.]*$)/i, u = /^([^.]+)\\.$/, c = /^\\.([^.]+)$/, x = /^-?(Infinity|NaN)$/, g = /^\\s*\\+(?=[\\w.])|^\\s+|\\s+$/g;
+    return function(d, v, p, y) {
+      var w, m = p ? v : v.replace(g, "");
+      if (x.test(m))
+        d.s = isNaN(m) ? null : m < 0 ? -1 : 1;
       else {
-        if (!h && (d = d.replace(s, function(v, R, M) {
-          return x = (M = M.toLowerCase()) == "x" ? 16 : M == "b" ? 2 : 8, !g || g == x ? R : v;
-        }), g && (x = g, d = d.replace(o, "$1").replace(l, "0.$1")), w != d))
-          return new S(d, x);
-        if (S.DEBUG)
-          throw Error(V + "Not a" + (g ? " base " + g : "") + " number: " + w);
-        y.s = null;
+        if (!p && (m = m.replace(s, function(T, P, M) {
+          return w = (M = M.toLowerCase()) == "x" ? 16 : M == "b" ? 2 : 8, !y || y == w ? P : T;
+        }), y && (w = y, m = m.replace(u, "$1").replace(c, "0.$1")), v != m))
+          return new _(m, w);
+        if (_.DEBUG)
+          throw Error($ + "Not a" + (y ? " base " + y : "") + " number: " + v);
+        d.s = null;
       }
-      y.c = y.e = null;
+      d.c = d.e = null;
     };
   })();
-  function j(s, o, l, m) {
-    var c, y, w, h, g, x, d, v = s.c, R = Ae;
-    if (v) {
+  function X(s, u, c, x) {
+    var g, d, v, p, y, w, m, T = s.c, P = Ie;
+    if (T) {
       e: {
-        for (c = 1, h = v[0]; h >= 10; h /= 10, c++) ;
-        if (y = o - c, y < 0)
-          y += P, w = o, g = v[x = 0], d = Y(g / R[c - w - 1] % 10);
-        else if (x = Pe((y + 1) / P), x >= v.length)
-          if (m) {
-            for (; v.length <= x; v.push(0)) ;
-            g = d = 0, c = 1, y %= P, w = y - P + 1;
+        for (g = 1, p = T[0]; p >= 10; p /= 10, g++) ;
+        if (d = u - g, d < 0)
+          d += R, v = u, y = T[w = 0], m = H(y / P[g - v - 1] % 10);
+        else if (w = Oe((d + 1) / R), w >= T.length)
+          if (x) {
+            for (; T.length <= w; T.push(0)) ;
+            y = m = 0, g = 1, d %= R, v = d - R + 1;
           } else
             break e;
         else {
-          for (g = h = v[x], c = 1; h >= 10; h /= 10, c++) ;
-          y %= P, w = y - P + c, d = w < 0 ? 0 : Y(g / R[c - w - 1] % 10);
+          for (y = p = T[w], g = 1; p >= 10; p /= 10, g++) ;
+          d %= R, v = d - R + g, m = v < 0 ? 0 : H(y / P[g - v - 1] % 10);
         }
-        if (m = m || o < 0 || // Are there any non-zero digits after the rounding digit?
+        if (x = x || u < 0 || // Are there any non-zero digits after the rounding digit?
         // The expression  n % pows10[d - j - 1]  returns all digits of n to the right
         // of the digit at j, e.g. if n is 908714 and j is 2, the expression gives 714.
-        v[x + 1] != null || (w < 0 ? g : g % R[c - w - 1]), m = l < 4 ? (d || m) && (l == 0 || l == (s.s < 0 ? 3 : 2)) : d > 5 || d == 5 && (l == 4 || m || l == 6 && // Check whether the digit to the left of the rounding digit is odd.
-        (y > 0 ? w > 0 ? g / R[c - w] : 0 : v[x - 1]) % 10 & 1 || l == (s.s < 0 ? 8 : 7)), o < 1 || !v[0])
-          return v.length = 0, m ? (o -= s.e + 1, v[0] = R[(P - o % P) % P], s.e = -o || 0) : v[0] = s.e = 0, s;
-        if (y == 0 ? (v.length = x, h = 1, x--) : (v.length = x + 1, h = R[P - y], v[x] = w > 0 ? Y(g / R[c - w] % R[w]) * h : 0), m)
+        T[w + 1] != null || (v < 0 ? y : y % P[g - v - 1]), x = c < 4 ? (m || x) && (c == 0 || c == (s.s < 0 ? 3 : 2)) : m > 5 || m == 5 && (c == 4 || x || c == 6 && // Check whether the digit to the left of the rounding digit is odd.
+        (d > 0 ? v > 0 ? y / P[g - v] : 0 : T[w - 1]) % 10 & 1 || c == (s.s < 0 ? 8 : 7)), u < 1 || !T[0])
+          return T.length = 0, x ? (u -= s.e + 1, T[0] = P[(R - u % R) % R], s.e = -u || 0) : T[0] = s.e = 0, s;
+        if (d == 0 ? (T.length = w, p = 1, w--) : (T.length = w + 1, p = P[R - d], T[w] = v > 0 ? H(y / P[g - v] % P[v]) * p : 0), x)
           for (; ; )
-            if (x == 0) {
-              for (y = 1, w = v[0]; w >= 10; w /= 10, y++) ;
-              for (w = v[0] += h, h = 1; w >= 10; w /= 10, h++) ;
-              y != h && (s.e++, v[0] == W && (v[0] = 1));
+            if (w == 0) {
+              for (d = 1, v = T[0]; v >= 10; v /= 10, d++) ;
+              for (v = T[0] += p, p = 1; v >= 10; v /= 10, p++) ;
+              d != p && (s.e++, T[0] == J && (T[0] = 1));
               break;
             } else {
-              if (v[x] += h, v[x] != W) break;
-              v[x--] = 0, h = 1;
+              if (T[w] += p, T[w] != J) break;
+              T[w--] = 0, p = 1;
             }
-        for (y = v.length; v[--y] === 0; v.pop()) ;
+        for (d = T.length; T[--d] === 0; T.pop()) ;
       }
-      s.e > T ? s.c = s.e = null : s.e < _ && (s.c = [s.e = 0]);
+      s.e > S ? s.c = s.e = null : s.e < E && (s.c = [s.e = 0]);
     }
     return s;
   }
   function ie(s) {
-    var o, l = s.e;
-    return l === null ? s.toString() : (o = X(s.c), o = l <= E || l >= p ? de(o, l) : ne(o, l, "0"), s.s < 0 ? "-" + o : o);
+    var u, c = s.e;
+    return c === null ? s.toString() : (u = Y(s.c), u = c <= a || c >= h ? xe(u, c) : ne(u, c, "0"), s.s < 0 ? "-" + u : u);
   }
   return r.absoluteValue = r.abs = function() {
-    var s = new S(this);
+    var s = new _(this);
     return s.s < 0 && (s.s = 1), s;
-  }, r.comparedTo = function(s, o) {
-    return oe(this, new S(s, o));
-  }, r.decimalPlaces = r.dp = function(s, o) {
-    var l, m, c, y = this;
+  }, r.comparedTo = function(s, u) {
+    return he(this, new _(s, u));
+  }, r.decimalPlaces = r.dp = function(s, u) {
+    var c, x, g, d = this;
     if (s != null)
-      return G(s, 0, U), o == null ? o = f : G(o, 0, 8), j(new S(y), s + y.e + 1, o);
-    if (!(l = y.c)) return null;
-    if (m = ((c = l.length - 1) - H(this.e / P)) * P, c = l[c]) for (; c % 10 == 0; c /= 10, m--) ;
-    return m < 0 && (m = 0), m;
-  }, r.dividedBy = r.div = function(s, o) {
-    return e(this, new S(s, o), a, f);
-  }, r.dividedToIntegerBy = r.idiv = function(s, o) {
-    return e(this, new S(s, o), 0, 1);
-  }, r.exponentiatedBy = r.pow = function(s, o) {
-    var l, m, c, y, w, h, g, x, d, v = this;
-    if (s = new S(s), s.c && !s.isInteger())
-      throw Error(V + "Exponent not an integer: " + ie(s));
-    if (o != null && (o = new S(o)), h = s.e > 14, !v.c || !v.c[0] || v.c[0] == 1 && !v.e && v.c.length == 1 || !s.c || !s.c[0])
-      return d = new S(Math.pow(+ie(v), h ? s.s * (2 - ye(s)) : +ie(s))), o ? d.mod(o) : d;
-    if (g = s.s < 0, o) {
-      if (o.c ? !o.c[0] : !o.s) return new S(NaN);
-      m = !g && v.isInteger() && o.isInteger(), m && (v = v.mod(o));
+      return F(s, 0, D), u == null ? u = o : F(u, 0, 8), X(new _(d), s + d.e + 1, u);
+    if (!(c = d.c)) return null;
+    if (x = ((g = c.length - 1) - Z(this.e / R)) * R, g = c[g]) for (; g % 10 == 0; g /= 10, x--) ;
+    return x < 0 && (x = 0), x;
+  }, r.dividedBy = r.div = function(s, u) {
+    return e(this, new _(s, u), f, o);
+  }, r.dividedToIntegerBy = r.idiv = function(s, u) {
+    return e(this, new _(s, u), 0, 1);
+  }, r.exponentiatedBy = r.pow = function(s, u) {
+    var c, x, g, d, v, p, y, w, m, T = this;
+    if (s = new _(s), s.c && !s.isInteger())
+      throw Error($ + "Exponent not an integer: " + ie(s));
+    if (u != null && (u = new _(u)), p = s.e > 14, !T.c || !T.c[0] || T.c[0] == 1 && !T.e && T.c.length == 1 || !s.c || !s.c[0])
+      return m = new _(Math.pow(+ie(T), p ? s.s * (2 - me(s)) : +ie(s))), u ? m.mod(u) : m;
+    if (y = s.s < 0, u) {
+      if (u.c ? !u.c[0] : !u.s) return new _(NaN);
+      x = !y && T.isInteger() && u.isInteger(), x && (T = T.mod(u));
     } else {
-      if (s.e > 9 && (v.e > 0 || v.e < -1 || (v.e == 0 ? v.c[0] > 1 || h && v.c[1] >= 24e7 : v.c[0] < 8e13 || h && v.c[0] <= 9999975e7)))
-        return y = v.s < 0 && ye(s) ? -0 : 0, v.e > -1 && (y = 1 / y), new S(g ? 1 / y : y);
-      N && (y = Pe(N / P + 2));
+      if (s.e > 9 && (T.e > 0 || T.e < -1 || (T.e == 0 ? T.c[0] > 1 || p && T.c[1] >= 24e7 : T.c[0] < 8e13 || p && T.c[0] <= 9999975e7)))
+        return d = T.s < 0 && me(s) ? -0 : 0, T.e > -1 && (d = 1 / d), new _(y ? 1 / d : d);
+      O && (d = Oe(O / R + 2));
     }
-    for (h ? (l = new S(0.5), g && (s.s = 1), x = ye(s)) : (c = Math.abs(+ie(s)), x = c % 2), d = new S(u); ; ) {
-      if (x) {
-        if (d = d.times(v), !d.c) break;
-        y ? d.c.length > y && (d.c.length = y) : m && (d = d.mod(o));
+    for (p ? (c = new _(0.5), y && (s.s = 1), w = me(s)) : (g = Math.abs(+ie(s)), w = g % 2), m = new _(l); ; ) {
+      if (w) {
+        if (m = m.times(T), !m.c) break;
+        d ? m.c.length > d && (m.c.length = d) : x && (m = m.mod(u));
       }
-      if (c) {
-        if (c = Y(c / 2), c === 0) break;
-        x = c % 2;
-      } else if (s = s.times(l), j(s, s.e + 1, 1), s.e > 14)
-        x = ye(s);
+      if (g) {
+        if (g = H(g / 2), g === 0) break;
+        w = g % 2;
+      } else if (s = s.times(c), X(s, s.e + 1, 1), s.e > 14)
+        w = me(s);
       else {
-        if (c = +ie(s), c === 0) break;
-        x = c % 2;
+        if (g = +ie(s), g === 0) break;
+        w = g % 2;
       }
-      v = v.times(v), y ? v.c && v.c.length > y && (v.c.length = y) : m && (v = v.mod(o));
+      T = T.times(T), d ? T.c && T.c.length > d && (T.c.length = d) : x && (T = T.mod(u));
     }
-    return m ? d : (g && (d = u.div(d)), o ? d.mod(o) : y ? j(d, N, f, w) : d);
+    return x ? m : (y && (m = l.div(m)), u ? m.mod(u) : d ? X(m, O, o, v) : m);
   }, r.integerValue = function(s) {
-    var o = new S(this);
-    return s == null ? s = f : G(s, 0, 8), j(o, o.e + 1, s);
-  }, r.isEqualTo = r.eq = function(s, o) {
-    return oe(this, new S(s, o)) === 0;
+    var u = new _(this);
+    return s == null ? s = o : F(s, 0, 8), X(u, u.e + 1, s);
+  }, r.isEqualTo = r.eq = function(s, u) {
+    return he(this, new _(s, u)) === 0;
   }, r.isFinite = function() {
     return !!this.c;
-  }, r.isGreaterThan = r.gt = function(s, o) {
-    return oe(this, new S(s, o)) > 0;
-  }, r.isGreaterThanOrEqualTo = r.gte = function(s, o) {
-    return (o = oe(this, new S(s, o))) === 1 || o === 0;
+  }, r.isGreaterThan = r.gt = function(s, u) {
+    return he(this, new _(s, u)) > 0;
+  }, r.isGreaterThanOrEqualTo = r.gte = function(s, u) {
+    return (u = he(this, new _(s, u))) === 1 || u === 0;
   }, r.isInteger = function() {
-    return !!this.c && H(this.e / P) > this.c.length - 2;
-  }, r.isLessThan = r.lt = function(s, o) {
-    return oe(this, new S(s, o)) < 0;
-  }, r.isLessThanOrEqualTo = r.lte = function(s, o) {
-    return (o = oe(this, new S(s, o))) === -1 || o === 0;
+    return !!this.c && Z(this.e / R) > this.c.length - 2;
+  }, r.isLessThan = r.lt = function(s, u) {
+    return he(this, new _(s, u)) < 0;
+  }, r.isLessThanOrEqualTo = r.lte = function(s, u) {
+    return (u = he(this, new _(s, u))) === -1 || u === 0;
   }, r.isNaN = function() {
     return !this.s;
   }, r.isNegative = function() {
@@ -678,178 +3018,178 @@ function Qe(i) {
     return this.s > 0;
   }, r.isZero = function() {
     return !!this.c && this.c[0] == 0;
-  }, r.minus = function(s, o) {
-    var l, m, c, y, w = this, h = w.s;
-    if (s = new S(s, o), o = s.s, !h || !o) return new S(NaN);
-    if (h != o)
-      return s.s = -o, w.plus(s);
-    var g = w.e / P, x = s.e / P, d = w.c, v = s.c;
-    if (!g || !x) {
-      if (!d || !v) return d ? (s.s = -o, s) : new S(v ? w : NaN);
-      if (!d[0] || !v[0])
-        return v[0] ? (s.s = -o, s) : new S(d[0] ? w : (
+  }, r.minus = function(s, u) {
+    var c, x, g, d, v = this, p = v.s;
+    if (s = new _(s, u), u = s.s, !p || !u) return new _(NaN);
+    if (p != u)
+      return s.s = -u, v.plus(s);
+    var y = v.e / R, w = s.e / R, m = v.c, T = s.c;
+    if (!y || !w) {
+      if (!m || !T) return m ? (s.s = -u, s) : new _(T ? v : NaN);
+      if (!m[0] || !T[0])
+        return T[0] ? (s.s = -u, s) : new _(m[0] ? v : (
           // IEEE 754 (2008) 6.3: n - n = -0 when rounding to -Infinity
-          f == 3 ? -0 : 0
+          o == 3 ? -0 : 0
         ));
     }
-    if (g = H(g), x = H(x), d = d.slice(), h = g - x) {
-      for ((y = h < 0) ? (h = -h, c = d) : (x = g, c = v), c.reverse(), o = h; o--; c.push(0)) ;
-      c.reverse();
+    if (y = Z(y), w = Z(w), m = m.slice(), p = y - w) {
+      for ((d = p < 0) ? (p = -p, g = m) : (w = y, g = T), g.reverse(), u = p; u--; g.push(0)) ;
+      g.reverse();
     } else
-      for (m = (y = (h = d.length) < (o = v.length)) ? h : o, h = o = 0; o < m; o++)
-        if (d[o] != v[o]) {
-          y = d[o] < v[o];
+      for (x = (d = (p = m.length) < (u = T.length)) ? p : u, p = u = 0; u < x; u++)
+        if (m[u] != T[u]) {
+          d = m[u] < T[u];
           break;
         }
-    if (y && (c = d, d = v, v = c, s.s = -s.s), o = (m = v.length) - (l = d.length), o > 0) for (; o--; d[l++] = 0) ;
-    for (o = W - 1; m > h; ) {
-      if (d[--m] < v[m]) {
-        for (l = m; l && !d[--l]; d[l] = o) ;
-        --d[l], d[m] += W;
+    if (d && (g = m, m = T, T = g, s.s = -s.s), u = (x = T.length) - (c = m.length), u > 0) for (; u--; m[c++] = 0) ;
+    for (u = J - 1; x > p; ) {
+      if (m[--x] < T[x]) {
+        for (c = x; c && !m[--c]; m[c] = u) ;
+        --m[c], m[x] += J;
       }
-      d[m] -= v[m];
+      m[x] -= T[x];
     }
-    for (; d[0] == 0; d.splice(0, 1), --x) ;
-    return d[0] ? _e(s, d, x) : (s.s = f == 3 ? -1 : 1, s.c = [s.e = 0], s);
-  }, r.modulo = r.mod = function(s, o) {
-    var l, m, c = this;
-    return s = new S(s, o), !c.c || !s.s || s.c && !s.c[0] ? new S(NaN) : !s.c || c.c && !c.c[0] ? new S(c) : (A == 9 ? (m = s.s, s.s = 1, l = e(c, s, 0, 3), s.s = m, l.s *= m) : l = e(c, s, 0, A), s = c.minus(l.times(s)), !s.c[0] && A == 1 && (s.s = c.s), s);
-  }, r.multipliedBy = r.times = function(s, o) {
-    var l, m, c, y, w, h, g, x, d, v, R, M, I, q, D, L = this, C = L.c, z = (s = new S(s, o)).c;
-    if (!C || !z || !C[0] || !z[0])
-      return !L.s || !s.s || C && !C[0] && !z || z && !z[0] && !C ? s.c = s.e = s.s = null : (s.s *= L.s, !C || !z ? s.c = s.e = null : (s.c = [0], s.e = 0)), s;
-    for (m = H(L.e / P) + H(s.e / P), s.s *= L.s, g = C.length, v = z.length, g < v && (I = C, C = z, z = I, c = g, g = v, v = c), c = g + v, I = []; c--; I.push(0)) ;
-    for (q = W, D = se, c = v; --c >= 0; ) {
-      for (l = 0, R = z[c] % D, M = z[c] / D | 0, w = g, y = c + w; y > c; )
-        x = C[--w] % D, d = C[w] / D | 0, h = M * x + d * R, x = R * x + h % D * D + I[y] + l, l = (x / q | 0) + (h / D | 0) + M * d, I[y--] = x % q;
-      I[y] = l;
+    for (; m[0] == 0; m.splice(0, 1), --w) ;
+    return m[0] ? Me(s, m, w) : (s.s = o == 3 ? -1 : 1, s.c = [s.e = 0], s);
+  }, r.modulo = r.mod = function(s, u) {
+    var c, x, g = this;
+    return s = new _(s, u), !g.c || !s.s || s.c && !s.c[0] ? new _(NaN) : !s.c || g.c && !g.c[0] ? new _(g) : (N == 9 ? (x = s.s, s.s = 1, c = e(g, s, 0, 3), s.s = x, c.s *= x) : c = e(g, s, 0, N), s = g.minus(c.times(s)), !s.c[0] && N == 1 && (s.s = g.s), s);
+  }, r.multipliedBy = r.times = function(s, u) {
+    var c, x, g, d, v, p, y, w, m, T, P, M, I, G, q, C = this, L = C.c, U = (s = new _(s, u)).c;
+    if (!L || !U || !L[0] || !U[0])
+      return !C.s || !s.s || L && !L[0] && !U || U && !U[0] && !L ? s.c = s.e = s.s = null : (s.s *= C.s, !L || !U ? s.c = s.e = null : (s.c = [0], s.e = 0)), s;
+    for (x = Z(C.e / R) + Z(s.e / R), s.s *= C.s, y = L.length, T = U.length, y < T && (I = L, L = U, U = I, g = y, y = T, T = g), g = y + T, I = []; g--; I.push(0)) ;
+    for (G = J, q = ue, g = T; --g >= 0; ) {
+      for (c = 0, P = U[g] % q, M = U[g] / q | 0, v = y, d = g + v; d > g; )
+        w = L[--v] % q, m = L[v] / q | 0, p = M * w + m * P, w = P * w + p % q * q + I[d] + c, c = (w / G | 0) + (p / q | 0) + M * m, I[d--] = w % G;
+      I[d] = c;
     }
-    return l ? ++m : I.splice(0, 1), _e(s, I, m);
+    return c ? ++x : I.splice(0, 1), Me(s, I, x);
   }, r.negated = function() {
-    var s = new S(this);
+    var s = new _(this);
     return s.s = -s.s || null, s;
-  }, r.plus = function(s, o) {
-    var l, m = this, c = m.s;
-    if (s = new S(s, o), o = s.s, !c || !o) return new S(NaN);
-    if (c != o)
-      return s.s = -o, m.minus(s);
-    var y = m.e / P, w = s.e / P, h = m.c, g = s.c;
-    if (!y || !w) {
-      if (!h || !g) return new S(c / 0);
-      if (!h[0] || !g[0]) return g[0] ? s : new S(h[0] ? m : c * 0);
+  }, r.plus = function(s, u) {
+    var c, x = this, g = x.s;
+    if (s = new _(s, u), u = s.s, !g || !u) return new _(NaN);
+    if (g != u)
+      return s.s = -u, x.minus(s);
+    var d = x.e / R, v = s.e / R, p = x.c, y = s.c;
+    if (!d || !v) {
+      if (!p || !y) return new _(g / 0);
+      if (!p[0] || !y[0]) return y[0] ? s : new _(p[0] ? x : g * 0);
     }
-    if (y = H(y), w = H(w), h = h.slice(), c = y - w) {
-      for (c > 0 ? (w = y, l = g) : (c = -c, l = h), l.reverse(); c--; l.push(0)) ;
-      l.reverse();
+    if (d = Z(d), v = Z(v), p = p.slice(), g = d - v) {
+      for (g > 0 ? (v = d, c = y) : (g = -g, c = p), c.reverse(); g--; c.push(0)) ;
+      c.reverse();
     }
-    for (c = h.length, o = g.length, c - o < 0 && (l = g, g = h, h = l, o = c), c = 0; o; )
-      c = (h[--o] = h[o] + g[o] + c) / W | 0, h[o] = W === h[o] ? 0 : h[o] % W;
-    return c && (h = [c].concat(h), ++w), _e(s, h, w);
-  }, r.precision = r.sd = function(s, o) {
-    var l, m, c, y = this;
+    for (g = p.length, u = y.length, g - u < 0 && (c = y, y = p, p = c, u = g), g = 0; u; )
+      g = (p[--u] = p[u] + y[u] + g) / J | 0, p[u] = J === p[u] ? 0 : p[u] % J;
+    return g && (p = [g].concat(p), ++v), Me(s, p, v);
+  }, r.precision = r.sd = function(s, u) {
+    var c, x, g, d = this;
     if (s != null && s !== !!s)
-      return G(s, 1, U), o == null ? o = f : G(o, 0, 8), j(new S(y), s, o);
-    if (!(l = y.c)) return null;
-    if (c = l.length - 1, m = c * P + 1, c = l[c]) {
-      for (; c % 10 == 0; c /= 10, m--) ;
-      for (c = l[0]; c >= 10; c /= 10, m++) ;
+      return F(s, 1, D), u == null ? u = o : F(u, 0, 8), X(new _(d), s, u);
+    if (!(c = d.c)) return null;
+    if (g = c.length - 1, x = g * R + 1, g = c[g]) {
+      for (; g % 10 == 0; g /= 10, x--) ;
+      for (g = c[0]; g >= 10; g /= 10, x++) ;
     }
-    return s && y.e + 1 > m && (m = y.e + 1), m;
+    return s && d.e + 1 > x && (x = d.e + 1), x;
   }, r.shiftedBy = function(s) {
-    return G(s, -Oe, Oe), this.times("1e" + s);
+    return F(s, -Ce, Ce), this.times("1e" + s);
   }, r.squareRoot = r.sqrt = function() {
-    var s, o, l, m, c, y = this, w = y.c, h = y.s, g = y.e, x = a + 4, d = new S("0.5");
-    if (h !== 1 || !w || !w[0])
-      return new S(!h || h < 0 && (!w || w[0]) ? NaN : w ? y : 1 / 0);
-    if (h = Math.sqrt(+ie(y)), h == 0 || h == 1 / 0 ? (o = X(w), (o.length + g) % 2 == 0 && (o += "0"), h = Math.sqrt(+o), g = H((g + 1) / 2) - (g < 0 || g % 2), h == 1 / 0 ? o = "5e" + g : (o = h.toExponential(), o = o.slice(0, o.indexOf("e") + 1) + g), l = new S(o)) : l = new S(h + ""), l.c[0]) {
-      for (g = l.e, h = g + x, h < 3 && (h = 0); ; )
-        if (c = l, l = d.times(c.plus(e(y, c, x, 1))), X(c.c).slice(0, h) === (o = X(l.c)).slice(0, h))
-          if (l.e < g && --h, o = o.slice(h - 3, h + 1), o == "9999" || !m && o == "4999") {
-            if (!m && (j(c, c.e + a + 2, 0), c.times(c).eq(y))) {
-              l = c;
+    var s, u, c, x, g, d = this, v = d.c, p = d.s, y = d.e, w = f + 4, m = new _("0.5");
+    if (p !== 1 || !v || !v[0])
+      return new _(!p || p < 0 && (!v || v[0]) ? NaN : v ? d : 1 / 0);
+    if (p = Math.sqrt(+ie(d)), p == 0 || p == 1 / 0 ? (u = Y(v), (u.length + y) % 2 == 0 && (u += "0"), p = Math.sqrt(+u), y = Z((y + 1) / 2) - (y < 0 || y % 2), p == 1 / 0 ? u = "5e" + y : (u = p.toExponential(), u = u.slice(0, u.indexOf("e") + 1) + y), c = new _(u)) : c = new _(p + ""), c.c[0]) {
+      for (y = c.e, p = y + w, p < 3 && (p = 0); ; )
+        if (g = c, c = m.times(g.plus(e(d, g, w, 1))), Y(g.c).slice(0, p) === (u = Y(c.c)).slice(0, p))
+          if (c.e < y && --p, u = u.slice(p - 3, p + 1), u == "9999" || !x && u == "4999") {
+            if (!x && (X(g, g.e + f + 2, 0), g.times(g).eq(d))) {
+              c = g;
               break;
             }
-            x += 4, h += 4, m = 1;
+            w += 4, p += 4, x = 1;
           } else {
-            (!+o || !+o.slice(1) && o.charAt(0) == "5") && (j(l, l.e + a + 2, 1), s = !l.times(l).eq(y));
+            (!+u || !+u.slice(1) && u.charAt(0) == "5") && (X(c, c.e + f + 2, 1), s = !c.times(c).eq(d));
             break;
           }
     }
-    return j(l, l.e + a + 1, f, s);
-  }, r.toExponential = function(s, o) {
-    return s != null && (G(s, 0, U), s++), Z(this, s, o, 1);
-  }, r.toFixed = function(s, o) {
-    return s != null && (G(s, 0, U), s = s + this.e + 1), Z(this, s, o);
-  }, r.toFormat = function(s, o, l) {
-    var m, c = this;
-    if (l == null)
-      s != null && o && typeof o == "object" ? (l = o, o = null) : s && typeof s == "object" ? (l = s, s = o = null) : l = O;
-    else if (typeof l != "object")
-      throw Error(V + "Argument not an object: " + l);
-    if (m = c.toFixed(s, o), c.c) {
-      var y, w = m.split("."), h = +l.groupSize, g = +l.secondaryGroupSize, x = l.groupSeparator || "", d = w[0], v = w[1], R = c.s < 0, M = R ? d.slice(1) : d, I = M.length;
-      if (g && (y = h, h = g, g = y, I -= y), h > 0 && I > 0) {
-        for (y = I % h || h, d = M.substr(0, y); y < I; y += h) d += x + M.substr(y, h);
-        g > 0 && (d += x + M.slice(y)), R && (d = "-" + d);
+    return X(c, c.e + f + 1, o, s);
+  }, r.toExponential = function(s, u) {
+    return s != null && (F(s, 0, D), s++), j(this, s, u, 1);
+  }, r.toFixed = function(s, u) {
+    return s != null && (F(s, 0, D), s = s + this.e + 1), j(this, s, u);
+  }, r.toFormat = function(s, u, c) {
+    var x, g = this;
+    if (c == null)
+      s != null && u && typeof u == "object" ? (c = u, u = null) : s && typeof s == "object" ? (c = s, s = u = null) : c = b;
+    else if (typeof c != "object")
+      throw Error($ + "Argument not an object: " + c);
+    if (x = g.toFixed(s, u), g.c) {
+      var d, v = x.split("."), p = +c.groupSize, y = +c.secondaryGroupSize, w = c.groupSeparator || "", m = v[0], T = v[1], P = g.s < 0, M = P ? m.slice(1) : m, I = M.length;
+      if (y && (d = p, p = y, y = d, I -= d), p > 0 && I > 0) {
+        for (d = I % p || p, m = M.substr(0, d); d < I; d += p) m += w + M.substr(d, p);
+        y > 0 && (m += w + M.slice(d)), P && (m = "-" + m);
       }
-      m = v ? d + (l.decimalSeparator || "") + ((g = +l.fractionGroupSize) ? v.replace(
-        new RegExp("\\\\d{" + g + "}\\\\B", "g"),
-        "$&" + (l.fractionGroupSeparator || "")
-      ) : v) : d;
+      x = T ? m + (c.decimalSeparator || "") + ((y = +c.fractionGroupSize) ? T.replace(
+        new RegExp("\\\\d{" + y + "}\\\\B", "g"),
+        "$&" + (c.fractionGroupSeparator || "")
+      ) : T) : m;
     }
-    return (l.prefix || "") + m + (l.suffix || "");
+    return (c.prefix || "") + x + (c.suffix || "");
   }, r.toFraction = function(s) {
-    var o, l, m, c, y, w, h, g, x, d, v, R, M = this, I = M.c;
-    if (s != null && (h = new S(s), !h.isInteger() && (h.c || h.s !== 1) || h.lt(u)))
-      throw Error(V + "Argument " + (h.isInteger() ? "out of range: " : "not an integer: ") + ie(h));
-    if (!I) return new S(M);
-    for (o = new S(u), x = l = new S(u), m = g = new S(u), R = X(I), y = o.e = R.length - M.e - 1, o.c[0] = Ae[(w = y % P) < 0 ? P + w : w], s = !s || h.comparedTo(o) > 0 ? y > 0 ? o : x : h, w = T, T = 1 / 0, h = new S(R), g.c[0] = 0; d = e(h, o, 0, 1), c = l.plus(d.times(m)), c.comparedTo(s) != 1; )
-      l = m, m = c, x = g.plus(d.times(c = x)), g = c, o = h.minus(d.times(c = o)), h = c;
-    return c = e(s.minus(l), m, 0, 1), g = g.plus(c.times(x)), l = l.plus(c.times(m)), g.s = x.s = M.s, y = y * 2, v = e(x, m, y, f).minus(M).abs().comparedTo(
-      e(g, l, y, f).minus(M).abs()
-    ) < 1 ? [x, m] : [g, l], T = w, v;
+    var u, c, x, g, d, v, p, y, w, m, T, P, M = this, I = M.c;
+    if (s != null && (p = new _(s), !p.isInteger() && (p.c || p.s !== 1) || p.lt(l)))
+      throw Error($ + "Argument " + (p.isInteger() ? "out of range: " : "not an integer: ") + ie(p));
+    if (!I) return new _(M);
+    for (u = new _(l), w = c = new _(l), x = y = new _(l), P = Y(I), d = u.e = P.length - M.e - 1, u.c[0] = Ie[(v = d % R) < 0 ? R + v : v], s = !s || p.comparedTo(u) > 0 ? d > 0 ? u : w : p, v = S, S = 1 / 0, p = new _(P), y.c[0] = 0; m = e(p, u, 0, 1), g = c.plus(m.times(x)), g.comparedTo(s) != 1; )
+      c = x, x = g, w = y.plus(m.times(g = w)), y = g, u = p.minus(m.times(g = u)), p = g;
+    return g = e(s.minus(c), x, 0, 1), y = y.plus(g.times(w)), c = c.plus(g.times(x)), y.s = w.s = M.s, d = d * 2, T = e(w, x, d, o).minus(M).abs().comparedTo(
+      e(y, c, d, o).minus(M).abs()
+    ) < 1 ? [w, x] : [y, c], S = v, T;
   }, r.toNumber = function() {
     return +ie(this);
-  }, r.toPrecision = function(s, o) {
-    return s != null && G(s, 1, U), Z(this, s, o, 2);
+  }, r.toPrecision = function(s, u) {
+    return s != null && F(s, 1, D), j(this, s, u, 2);
   }, r.toString = function(s) {
-    var o, l = this, m = l.s, c = l.e;
-    return c === null ? m ? (o = "Infinity", m < 0 && (o = "-" + o)) : o = "NaN" : (s == null ? o = c <= E || c >= p ? de(X(l.c), c) : ne(X(l.c), c, "0") : s === 10 && k ? (l = j(new S(l), a + c + 1, f), o = ne(X(l.c), l.e, "0")) : (G(s, 2, B.length, "Base"), o = t(ne(X(l.c), c, "0"), 10, s, m, !0)), m < 0 && l.c[0] && (o = "-" + o)), o;
+    var u, c = this, x = c.s, g = c.e;
+    return g === null ? x ? (u = "Infinity", x < 0 && (u = "-" + u)) : u = "NaN" : (s == null ? u = g <= a || g >= h ? xe(Y(c.c), g) : ne(Y(c.c), g, "0") : s === 10 && B ? (c = X(new _(c), f + g + 1, o), u = ne(Y(c.c), c.e, "0")) : (F(s, 2, k.length, "Base"), u = t(ne(Y(c.c), g, "0"), 10, s, x, !0)), x < 0 && c.c[0] && (u = "-" + u)), u;
   }, r.valueOf = r.toJSON = function() {
     return ie(this);
-  }, r._isBigNumber = !0, r[Symbol.toStringTag] = "BigNumber", r[/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")] = r.valueOf, i != null && S.set(i), S;
+  }, r._isBigNumber = !0, r[Symbol.toStringTag] = "BigNumber", r[/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")] = r.valueOf, i != null && _.set(i), _;
 }
-function H(i) {
+function Z(i) {
   var e = i | 0;
   return i > 0 || i === e ? e : e - 1;
 }
-function X(i) {
-  for (var e, t, n = 1, r = i.length, u = i[0] + ""; n < r; ) {
-    for (e = i[n++] + "", t = P - e.length; t--; e = "0" + e) ;
-    u += e;
+function Y(i) {
+  for (var e, t, n = 1, r = i.length, l = i[0] + ""; n < r; ) {
+    for (e = i[n++] + "", t = R - e.length; t--; e = "0" + e) ;
+    l += e;
   }
-  for (r = u.length; u.charCodeAt(--r) === 48; ) ;
-  return u.slice(0, r + 1 || 1);
+  for (r = l.length; l.charCodeAt(--r) === 48; ) ;
+  return l.slice(0, r + 1 || 1);
 }
-function oe(i, e) {
-  var t, n, r = i.c, u = e.c, a = i.s, f = e.s, E = i.e, p = e.e;
-  if (!a || !f) return null;
-  if (t = r && !r[0], n = u && !u[0], t || n) return t ? n ? 0 : -f : a;
-  if (a != f) return a;
-  if (t = a < 0, n = E == p, !r || !u) return n ? 0 : !r ^ t ? 1 : -1;
-  if (!n) return E > p ^ t ? 1 : -1;
-  for (f = (E = r.length) < (p = u.length) ? E : p, a = 0; a < f; a++) if (r[a] != u[a]) return r[a] > u[a] ^ t ? 1 : -1;
-  return E == p ? 0 : E > p ^ t ? 1 : -1;
+function he(i, e) {
+  var t, n, r = i.c, l = e.c, f = i.s, o = e.s, a = i.e, h = e.e;
+  if (!f || !o) return null;
+  if (t = r && !r[0], n = l && !l[0], t || n) return t ? n ? 0 : -o : f;
+  if (f != o) return f;
+  if (t = f < 0, n = a == h, !r || !l) return n ? 0 : !r ^ t ? 1 : -1;
+  if (!n) return a > h ^ t ? 1 : -1;
+  for (o = (a = r.length) < (h = l.length) ? a : h, f = 0; f < o; f++) if (r[f] != l[f]) return r[f] > l[f] ^ t ? 1 : -1;
+  return a == h ? 0 : a > h ^ t ? 1 : -1;
 }
-function G(i, e, t, n) {
-  if (i < e || i > t || i !== Y(i))
-    throw Error(V + (n || "Argument") + (typeof i == "number" ? i < e || i > t ? " out of range: " : " not an integer: " : " not a primitive number: ") + String(i));
+function F(i, e, t, n) {
+  if (i < e || i > t || i !== H(i))
+    throw Error($ + (n || "Argument") + (typeof i == "number" ? i < e || i > t ? " out of range: " : " not an integer: " : " not a primitive number: ") + String(i));
 }
-function ye(i) {
+function me(i) {
   var e = i.c.length - 1;
-  return H(i.e / P) == e && i.c[e] % 2 != 0;
+  return Z(i.e / R) == e && i.c[e] % 2 != 0;
 }
-function de(i, e) {
+function xe(i, e) {
   return (i.length > 1 ? i.charAt(0) + "." + i.slice(1) : i) + (e < 0 ? "e" : "e+") + e;
 }
 function ne(i, e, t) {
@@ -863,18 +3203,18 @@ function ne(i, e, t) {
   } else e < n && (i = i.slice(0, e) + "." + i.slice(e));
   return i;
 }
-var te = Qe(), st = class {
+var te = Qe(), Tt = class {
   key;
   left = null;
   right = null;
   constructor(i) {
     this.key = i;
   }
-}, he = class extends st {
+}, ae = class extends Tt {
   constructor(i) {
     super(i);
   }
-}, ot = class {
+}, At = class {
   size = 0;
   modificationCount = 0;
   splayCount = 0;
@@ -882,23 +3222,23 @@ var te = Qe(), st = class {
     const e = this.root;
     if (e == null)
       return this.compare(i, i), -1;
-    let t = null, n = null, r = null, u = null, a = e;
-    const f = this.compare;
-    let E;
+    let t = null, n = null, r = null, l = null, f = e;
+    const o = this.compare;
+    let a;
     for (; ; )
-      if (E = f(a.key, i), E > 0) {
-        let p = a.left;
-        if (p == null || (E = f(p.key, i), E > 0 && (a.left = p.right, p.right = a, a = p, p = a.left, p == null)))
+      if (a = o(f.key, i), a > 0) {
+        let h = f.left;
+        if (h == null || (a = o(h.key, i), a > 0 && (f.left = h.right, h.right = f, f = h, h = f.left, h == null)))
           break;
-        t == null ? n = a : t.left = a, t = a, a = p;
-      } else if (E < 0) {
-        let p = a.right;
-        if (p == null || (E = f(p.key, i), E < 0 && (a.right = p.left, p.left = a, a = p, p = a.right, p == null)))
+        t == null ? n = f : t.left = f, t = f, f = h;
+      } else if (a < 0) {
+        let h = f.right;
+        if (h == null || (a = o(h.key, i), a < 0 && (f.right = h.left, h.left = f, f = h, h = f.right, h == null)))
           break;
-        r == null ? u = a : r.right = a, r = a, a = p;
+        r == null ? l = f : r.right = f, r = f, f = h;
       } else
         break;
-    return r != null && (r.right = a.left, a.left = u), t != null && (t.left = a.right, a.right = n), this.root !== a && (this.root = a, this.splayCount++), E;
+    return r != null && (r.right = f.left, f.left = l), t != null && (t.left = f.right, f.right = n), this.root !== f && (this.root = f, this.splayCount++), a;
   }
   splayMin(i) {
     let e = i, t = e.left;
@@ -923,8 +3263,8 @@ var te = Qe(), st = class {
     if (this.size--, r == null)
       this.root = t.right;
     else {
-      const u = t.right;
-      t = this.splayMax(r), t.right = u, this.root = t;
+      const l = t.right;
+      t = this.splayMax(r), t.right = l, this.root = t;
     }
     return this.modificationCount++, n;
   }
@@ -970,7 +3310,7 @@ var te = Qe(), st = class {
       has: (i) => this.has(i)
     };
   }
-}, Ee = class ce extends ot {
+}, Se = class ge extends At {
   root = null;
   compare;
   validKey;
@@ -992,11 +3332,11 @@ var te = Qe(), st = class {
   }
   add(e) {
     const t = this.splay(e);
-    return t != 0 && this.addNewRoot(new he(e), t), this;
+    return t != 0 && this.addNewRoot(new ae(e), t), this;
   }
   addAndReturn(e) {
     const t = this.splay(e);
-    return t != 0 && this.addNewRoot(new he(e), t), this.root.key;
+    return t != 0 && this.addNewRoot(new ae(e), t), this.root.key;
   }
   addAll(e) {
     for (const t of e)
@@ -1044,7 +3384,7 @@ var te = Qe(), st = class {
     return n.key;
   }
   retainAll(e) {
-    const t = new ce(this.compare, this.validKey), n = this.modificationCount;
+    const t = new ge(this.compare, this.validKey), n = this.modificationCount;
     for (const r of e) {
       if (n != this.modificationCount)
         throw "Concurrent modification during iteration.";
@@ -1056,13 +3396,13 @@ var te = Qe(), st = class {
     return !this.validKey(e) || this.splay(e) != 0 ? null : this.root.key;
   }
   intersection(e) {
-    const t = new ce(this.compare, this.validKey);
+    const t = new ge(this.compare, this.validKey);
     for (const n of this)
       e.has(n) && t.add(n);
     return t;
   }
   difference(e) {
-    const t = new ce(this.compare, this.validKey);
+    const t = new ge(this.compare, this.validKey);
     for (const n of this)
       e.has(n) || t.add(n);
     return t;
@@ -1072,32 +3412,32 @@ var te = Qe(), st = class {
     return t.addAll(e), t;
   }
   clone() {
-    const e = new ce(this.compare, this.validKey);
+    const e = new ge(this.compare, this.validKey);
     return e.size = this.size, e.root = this.copyNode(this.root), e;
   }
   copyNode(e) {
     if (e == null) return null;
-    function t(r, u) {
-      let a, f;
+    function t(r, l) {
+      let f, o;
       do {
-        if (a = r.left, f = r.right, a != null) {
-          const E = new he(a.key);
-          u.left = E, t(a, E);
+        if (f = r.left, o = r.right, f != null) {
+          const a = new ae(f.key);
+          l.left = a, t(f, a);
         }
-        if (f != null) {
-          const E = new he(f.key);
-          u.right = E, r = f, u = E;
+        if (o != null) {
+          const a = new ae(o.key);
+          l.right = a, r = o, l = a;
         }
-      } while (f != null);
+      } while (o != null);
     }
-    const n = new he(e.key);
+    const n = new ae(e.key);
     return t(e, n), n;
   }
   toSet() {
     return this.clone();
   }
   entries() {
-    return new ut(this.wrap());
+    return new Mt(this.wrap());
   }
   keys() {
     return this[Symbol.iterator]();
@@ -1106,7 +3446,7 @@ var te = Qe(), st = class {
     return this[Symbol.iterator]();
   }
   [Symbol.iterator]() {
-    return new lt(this.wrap());
+    return new Pt(this.wrap());
   }
   [Symbol.toStringTag] = "[object Set]";
 }, et = class {
@@ -1158,64 +3498,64 @@ var te = Qe(), st = class {
       i = this.path.pop();
     return this.path.length > 0;
   }
-}, lt = class extends et {
+}, Pt = class extends et {
   getValue(i) {
     return i.key;
   }
-}, ut = class extends et {
+}, Mt = class extends et {
   getValue(i) {
     return [i.key, i.key];
   }
-}, tt = (i) => () => i, Ce = (i) => {
+}, tt = (i) => () => i, Be = (i) => {
   const e = i ? (t, n) => n.minus(t).abs().isLessThanOrEqualTo(i) : tt(!1);
   return (t, n) => e(t, n) ? 0 : t.comparedTo(n);
 };
-function ft(i) {
-  const e = i ? (t, n, r, u, a) => t.exponentiatedBy(2).isLessThanOrEqualTo(
-    u.minus(n).exponentiatedBy(2).plus(a.minus(r).exponentiatedBy(2)).times(i)
+function bt(i) {
+  const e = i ? (t, n, r, l, f) => t.exponentiatedBy(2).isLessThanOrEqualTo(
+    l.minus(n).exponentiatedBy(2).plus(f.minus(r).exponentiatedBy(2)).times(i)
   ) : tt(!1);
   return (t, n, r) => {
-    const u = t.x, a = t.y, f = r.x, E = r.y, p = a.minus(E).times(n.x.minus(f)).minus(u.minus(f).times(n.y.minus(E)));
-    return e(p, u, a, f, E) ? 0 : p.comparedTo(0);
+    const l = t.x, f = t.y, o = r.x, a = r.y, h = f.minus(a).times(n.x.minus(o)).minus(l.minus(o).times(n.y.minus(a)));
+    return e(h, l, f, o, a) ? 0 : h.comparedTo(0);
   };
 }
-var ht = (i) => i, at = (i) => {
+var Rt = (i) => i, Nt = (i) => {
   if (i) {
-    const e = new Ee(Ce(i)), t = new Ee(Ce(i)), n = (u, a) => a.addAndReturn(u), r = (u) => ({
-      x: n(u.x, e),
-      y: n(u.y, t)
+    const e = new Se(Be(i)), t = new Se(Be(i)), n = (l, f) => f.addAndReturn(l), r = (l) => ({
+      x: n(l.x, e),
+      y: n(l.y, t)
     });
     return r({ x: new te(0), y: new te(0) }), r;
   }
-  return ht;
-}, Be = (i) => ({
+  return Rt;
+}, Fe = (i) => ({
   set: (e) => {
-    re = Be(e);
+    se = Fe(e);
   },
-  reset: () => Be(i),
-  compare: Ce(i),
-  snap: at(i),
-  orient: ft(i)
-}), re = Be(), ae = (i, e) => i.ll.x.isLessThanOrEqualTo(e.x) && e.x.isLessThanOrEqualTo(i.ur.x) && i.ll.y.isLessThanOrEqualTo(e.y) && e.y.isLessThanOrEqualTo(i.ur.y), ke = (i, e) => {
+  reset: () => Fe(i),
+  compare: Be(i),
+  snap: Nt(i),
+  orient: bt(i)
+}), se = Fe(), ce = (i, e) => i.ll.x.isLessThanOrEqualTo(e.x) && e.x.isLessThanOrEqualTo(i.ur.x) && i.ll.y.isLessThanOrEqualTo(e.y) && e.y.isLessThanOrEqualTo(i.ur.y), Ge = (i, e) => {
   if (e.ur.x.isLessThan(i.ll.x) || i.ur.x.isLessThan(e.ll.x) || e.ur.y.isLessThan(i.ll.y) || i.ur.y.isLessThan(e.ll.y))
     return null;
-  const t = i.ll.x.isLessThan(e.ll.x) ? e.ll.x : i.ll.x, n = i.ur.x.isLessThan(e.ur.x) ? i.ur.x : e.ur.x, r = i.ll.y.isLessThan(e.ll.y) ? e.ll.y : i.ll.y, u = i.ur.y.isLessThan(e.ur.y) ? i.ur.y : e.ur.y;
-  return { ll: { x: t, y: r }, ur: { x: n, y: u } };
-}, xe = (i, e) => i.x.times(e.y).minus(i.y.times(e.x)), it = (i, e) => i.x.times(e.x).plus(i.y.times(e.y)), ve = (i) => it(i, i).sqrt(), ct = (i, e, t) => {
+  const t = i.ll.x.isLessThan(e.ll.x) ? e.ll.x : i.ll.x, n = i.ur.x.isLessThan(e.ur.x) ? i.ur.x : e.ur.x, r = i.ll.y.isLessThan(e.ll.y) ? e.ll.y : i.ll.y, l = i.ur.y.isLessThan(e.ur.y) ? i.ur.y : e.ur.y;
+  return { ll: { x: t, y: r }, ur: { x: n, y: l } };
+}, we = (i, e) => i.x.times(e.y).minus(i.y.times(e.x)), it = (i, e) => i.x.times(e.x).plus(i.y.times(e.y)), Te = (i) => it(i, i).sqrt(), Ot = (i, e, t) => {
   const n = { x: e.x.minus(i.x), y: e.y.minus(i.y) }, r = { x: t.x.minus(i.x), y: t.y.minus(i.y) };
-  return xe(r, n).div(ve(r)).div(ve(n));
-}, pt = (i, e, t) => {
+  return we(r, n).div(Te(r)).div(Te(n));
+}, Ct = (i, e, t) => {
   const n = { x: e.x.minus(i.x), y: e.y.minus(i.y) }, r = { x: t.x.minus(i.x), y: t.y.minus(i.y) };
-  return it(r, n).div(ve(r)).div(ve(n));
-}, Ue = (i, e, t) => e.y.isZero() ? null : { x: i.x.plus(e.x.div(e.y).times(t.minus(i.y))), y: t }, ze = (i, e, t) => e.x.isZero() ? null : { x: t, y: i.y.plus(e.y.div(e.x).times(t.minus(i.x))) }, gt = (i, e, t, n) => {
-  if (e.x.isZero()) return ze(t, n, i.x);
-  if (n.x.isZero()) return ze(i, e, t.x);
-  if (e.y.isZero()) return Ue(t, n, i.y);
-  if (n.y.isZero()) return Ue(i, e, t.y);
-  const r = xe(e, n);
+  return it(r, n).div(Te(r)).div(Te(n));
+}, Xe = (i, e, t) => e.y.isZero() ? null : { x: i.x.plus(e.x.div(e.y).times(t.minus(i.y))), y: t }, Ke = (i, e, t) => e.x.isZero() ? null : { x: t, y: i.y.plus(e.y.div(e.x).times(t.minus(i.x))) }, It = (i, e, t, n) => {
+  if (e.x.isZero()) return Ke(t, n, i.x);
+  if (n.x.isZero()) return Ke(i, e, t.x);
+  if (e.y.isZero()) return Xe(t, n, i.y);
+  if (n.y.isZero()) return Xe(i, e, t.y);
+  const r = we(e, n);
   if (r.isZero()) return null;
-  const u = { x: t.x.minus(i.x), y: t.y.minus(i.y) }, a = xe(u, e).div(r), f = xe(u, n).div(r), E = i.x.plus(f.times(e.x)), p = t.x.plus(a.times(n.x)), _ = i.y.plus(f.times(e.y)), T = t.y.plus(a.times(n.y)), b = E.plus(p).div(2), A = _.plus(T).div(2);
-  return { x: b, y: A };
+  const l = { x: t.x.minus(i.x), y: t.y.minus(i.y) }, f = we(l, e).div(r), o = we(l, n).div(r), a = i.x.plus(o.times(e.x)), h = t.x.plus(f.times(n.x)), E = i.y.plus(o.times(e.y)), S = t.y.plus(f.times(n.y)), A = a.plus(h).div(2), N = E.plus(S).div(2);
+  return { x: A, y: N };
 }, ee = class nt {
   point;
   isLeft;
@@ -1225,7 +3565,7 @@ var ht = (i) => i, at = (i) => {
   // for ordering sweep events in the sweep event queue
   static compare(e, t) {
     const n = nt.comparePoints(e.point, t.point);
-    return n !== 0 ? n : (e.point !== t.point && e.link(t), e.isLeft !== t.isLeft ? e.isLeft ? 1 : -1 : Se.compare(e.segment, t.segment));
+    return n !== 0 ? n : (e.point !== t.point && e.link(t), e.isLeft !== t.isLeft ? e.isLeft ? 1 : -1 : Ae.compare(e.segment, t.segment));
   }
   // for ordering points in sweep line order
   static comparePoints(e, t) {
@@ -1240,8 +3580,8 @@ var ht = (i) => i, at = (i) => {
       throw new Error("Tried to link already linked events");
     const t = e.point.events;
     for (let n = 0, r = t.length; n < r; n++) {
-      const u = t[n];
-      this.point.events.push(u), u.point = this.point;
+      const l = t[n];
+      this.point.events.push(l), l.point = this.point;
     }
     this.checkForConsuming();
   }
@@ -1253,8 +3593,8 @@ var ht = (i) => i, at = (i) => {
       const n = this.point.events[t];
       if (n.segment.consumedBy === void 0)
         for (let r = t + 1; r < e; r++) {
-          const u = this.point.events[r];
-          u.consumedBy === void 0 && n.otherSE.point.events === u.otherSE.point.events && n.segment.consume(u.segment);
+          const l = this.point.events[r];
+          l.consumedBy === void 0 && n.otherSE.point.events === l.otherSE.point.events && n.segment.consume(l.segment);
         }
     }
   }
@@ -1278,19 +3618,19 @@ var ht = (i) => i, at = (i) => {
    */
   getLeftmostComparator(e) {
     const t = /* @__PURE__ */ new Map(), n = (r) => {
-      const u = r.otherSE;
+      const l = r.otherSE;
       t.set(r, {
-        sine: ct(this.point, e.point, u.point),
-        cosine: pt(this.point, e.point, u.point)
+        sine: Ot(this.point, e.point, l.point),
+        cosine: Ct(this.point, e.point, l.point)
       });
     };
-    return (r, u) => {
-      t.has(r) || n(r), t.has(u) || n(u);
-      const { sine: a, cosine: f } = t.get(r), { sine: E, cosine: p } = t.get(u);
-      return a.isGreaterThanOrEqualTo(0) && E.isGreaterThanOrEqualTo(0) ? f.isLessThan(p) ? 1 : f.isGreaterThan(p) ? -1 : 0 : a.isLessThan(0) && E.isLessThan(0) ? f.isLessThan(p) ? -1 : f.isGreaterThan(p) ? 1 : 0 : E.isLessThan(a) ? -1 : E.isGreaterThan(a) ? 1 : 0;
+    return (r, l) => {
+      t.has(r) || n(r), t.has(l) || n(l);
+      const { sine: f, cosine: o } = t.get(r), { sine: a, cosine: h } = t.get(l);
+      return f.isGreaterThanOrEqualTo(0) && a.isGreaterThanOrEqualTo(0) ? o.isLessThan(h) ? 1 : o.isGreaterThan(h) ? -1 : 0 : f.isLessThan(0) && a.isLessThan(0) ? o.isLessThan(h) ? -1 : o.isGreaterThan(h) ? 1 : 0 : a.isLessThan(f) ? -1 : a.isGreaterThan(f) ? 1 : 0;
     };
   }
-}, yt = class Ge {
+}, Lt = class ze {
   events;
   poly;
   _isExteriorRing;
@@ -1300,43 +3640,43 @@ var ht = (i) => i, at = (i) => {
   static factory(e) {
     const t = [];
     for (let n = 0, r = e.length; n < r; n++) {
-      const u = e[n];
-      if (!u.isInResult() || u.ringOut) continue;
-      let a = null, f = u.leftSE, E = u.rightSE;
-      const p = [f], _ = f.point, T = [];
-      for (; a = f, f = E, p.push(f), f.point !== _; )
+      const l = e[n];
+      if (!l.isInResult() || l.ringOut) continue;
+      let f = null, o = l.leftSE, a = l.rightSE;
+      const h = [o], E = o.point, S = [];
+      for (; f = o, o = a, h.push(o), o.point !== E; )
         for (; ; ) {
-          const b = f.getAvailableLinkedEvents();
-          if (b.length === 0) {
-            const O = p[0].point, B = p[p.length - 1].point;
+          const A = o.getAvailableLinkedEvents();
+          if (A.length === 0) {
+            const b = h[0].point, k = h[h.length - 1].point;
             throw new Error(
-              \`Unable to complete output ring starting at [\${O.x}, \${O.y}]. Last matching segment found ends at [\${B.x}, \${B.y}].\`
+              \`Unable to complete output ring starting at [\${b.x}, \${b.y}]. Last matching segment found ends at [\${k.x}, \${k.y}].\`
             );
           }
-          if (b.length === 1) {
-            E = b[0].otherSE;
+          if (A.length === 1) {
+            a = A[0].otherSE;
             break;
           }
-          let A = null;
-          for (let O = 0, B = T.length; O < B; O++)
-            if (T[O].point === f.point) {
-              A = O;
+          let N = null;
+          for (let b = 0, k = S.length; b < k; b++)
+            if (S[b].point === o.point) {
+              N = b;
               break;
             }
-          if (A !== null) {
-            const O = T.splice(A)[0], B = p.splice(O.index);
-            B.unshift(B[0].otherSE), t.push(new Ge(B.reverse()));
+          if (N !== null) {
+            const b = S.splice(N)[0], k = h.splice(b.index);
+            k.unshift(k[0].otherSE), t.push(new ze(k.reverse()));
             continue;
           }
-          T.push({
-            index: p.length,
-            point: f.point
+          S.push({
+            index: h.length,
+            point: o.point
           });
-          const N = f.getLeftmostComparator(a);
-          E = b.sort(N)[0].otherSE;
+          const O = o.getLeftmostComparator(f);
+          a = A.sort(O)[0].otherSE;
           break;
         }
-      t.push(new Ge(p));
+      t.push(new ze(h));
     }
     return t;
   }
@@ -1349,17 +3689,17 @@ var ht = (i) => i, at = (i) => {
   getGeom() {
     let e = this.events[0].point;
     const t = [e];
-    for (let p = 1, _ = this.events.length - 1; p < _; p++) {
-      const T = this.events[p].point, b = this.events[p + 1].point;
-      re.orient(T, e, b) !== 0 && (t.push(T), e = T);
+    for (let h = 1, E = this.events.length - 1; h < E; h++) {
+      const S = this.events[h].point, A = this.events[h + 1].point;
+      se.orient(S, e, A) !== 0 && (t.push(S), e = S);
     }
     if (t.length === 1) return null;
     const n = t[0], r = t[1];
-    re.orient(n, e, r) === 0 && t.shift(), t.push(t[0]);
-    const u = this.isExteriorRing() ? 1 : -1, a = this.isExteriorRing() ? 0 : t.length - 1, f = this.isExteriorRing() ? t.length : -1, E = [];
-    for (let p = a; p != f; p += u)
-      E.push([t[p].x.toNumber(), t[p].y.toNumber()]);
-    return E;
+    se.orient(n, e, r) === 0 && t.shift(), t.push(t[0]);
+    const l = this.isExteriorRing() ? 1 : -1, f = this.isExteriorRing() ? 0 : t.length - 1, o = this.isExteriorRing() ? t.length : -1, a = [];
+    for (let h = f; h != o; h += l)
+      a.push([t[h].x.toNumber(), t[h].y.toNumber()]);
+    return a;
   }
   isExteriorRing() {
     if (this._isExteriorRing === void 0) {
@@ -1374,9 +3714,9 @@ var ht = (i) => i, at = (i) => {
   /* Returns the ring that encloses this one, if any */
   _calcEnclosingRing() {
     let e = this.events[0];
-    for (let r = 1, u = this.events.length; r < u; r++) {
-      const a = this.events[r];
-      ee.compare(e, a) > 0 && (e = a);
+    for (let r = 1, l = this.events.length; r < l; r++) {
+      const f = this.events[r];
+      ee.compare(e, f) > 0 && (e = f);
     }
     let t = e.segment.prevInResult(), n = t ? t.prevInResult() : null;
     for (; ; ) {
@@ -1387,7 +3727,7 @@ var ht = (i) => i, at = (i) => {
       t = n.prevInResult(), n = t ? t.prevInResult() : null;
     }
   }
-}, $e = class {
+}, Ye = class {
   exteriorRing;
   interiorRings;
   constructor(i) {
@@ -1406,7 +3746,7 @@ var ht = (i) => i, at = (i) => {
     }
     return e;
   }
-}, dt = class {
+}, kt = class {
   rings;
   polys;
   constructor(i) {
@@ -1425,20 +3765,20 @@ var ht = (i) => i, at = (i) => {
     for (let t = 0, n = i.length; t < n; t++) {
       const r = i[t];
       if (!r.poly)
-        if (r.isExteriorRing()) e.push(new $e(r));
+        if (r.isExteriorRing()) e.push(new Ye(r));
         else {
-          const u = r.enclosingRing();
-          u?.poly || e.push(new $e(u)), u?.poly?.addInterior(r);
+          const l = r.enclosingRing();
+          l?.poly || e.push(new Ye(l)), l?.poly?.addInterior(r);
         }
     }
     return e;
   }
-}, mt = class {
+}, Bt = class {
   queue;
   tree;
   segments;
-  constructor(i, e = Se.compare) {
-    this.queue = i, this.tree = new Ee(e), this.segments = [];
+  constructor(i, e = Ae.compare) {
+    this.queue = i, this.tree = new Se(e), this.segments = [];
   }
   process(i) {
     const e = i.segment, t = [];
@@ -1453,48 +3793,48 @@ var ht = (i) => i, at = (i) => {
       r = this.tree.firstAfter(r);
     while (r != null && r.consumedBy != null);
     if (i.isLeft) {
-      let u = null;
+      let l = null;
       if (n) {
-        const f = n.getIntersection(e);
-        if (f !== null && (e.isAnEndpoint(f) || (u = f), !n.isAnEndpoint(f))) {
-          const E = this._splitSafely(n, f);
-          for (let p = 0, _ = E.length; p < _; p++)
-            t.push(E[p]);
+        const o = n.getIntersection(e);
+        if (o !== null && (e.isAnEndpoint(o) || (l = o), !n.isAnEndpoint(o))) {
+          const a = this._splitSafely(n, o);
+          for (let h = 0, E = a.length; h < E; h++)
+            t.push(a[h]);
         }
       }
-      let a = null;
+      let f = null;
       if (r) {
-        const f = r.getIntersection(e);
-        if (f !== null && (e.isAnEndpoint(f) || (a = f), !r.isAnEndpoint(f))) {
-          const E = this._splitSafely(r, f);
-          for (let p = 0, _ = E.length; p < _; p++)
-            t.push(E[p]);
+        const o = r.getIntersection(e);
+        if (o !== null && (e.isAnEndpoint(o) || (f = o), !r.isAnEndpoint(o))) {
+          const a = this._splitSafely(r, o);
+          for (let h = 0, E = a.length; h < E; h++)
+            t.push(a[h]);
         }
       }
-      if (u !== null || a !== null) {
-        let f = null;
-        u === null ? f = a : a === null ? f = u : f = ee.comparePoints(
-          u,
-          a
-        ) <= 0 ? u : a, this.queue.delete(e.rightSE), t.push(e.rightSE);
-        const E = e.split(f);
-        for (let p = 0, _ = E.length; p < _; p++)
-          t.push(E[p]);
+      if (l !== null || f !== null) {
+        let o = null;
+        l === null ? o = f : f === null ? o = l : o = ee.comparePoints(
+          l,
+          f
+        ) <= 0 ? l : f, this.queue.delete(e.rightSE), t.push(e.rightSE);
+        const a = e.split(o);
+        for (let h = 0, E = a.length; h < E; h++)
+          t.push(a[h]);
       }
       t.length > 0 ? (this.tree.delete(e), t.push(i)) : (this.segments.push(e), e.prev = n);
     } else {
       if (n && r) {
-        const u = n.getIntersection(r);
-        if (u !== null) {
-          if (!n.isAnEndpoint(u)) {
-            const a = this._splitSafely(n, u);
-            for (let f = 0, E = a.length; f < E; f++)
-              t.push(a[f]);
+        const l = n.getIntersection(r);
+        if (l !== null) {
+          if (!n.isAnEndpoint(l)) {
+            const f = this._splitSafely(n, l);
+            for (let o = 0, a = f.length; o < a; o++)
+              t.push(f[o]);
           }
-          if (!r.isAnEndpoint(u)) {
-            const a = this._splitSafely(r, u);
-            for (let f = 0, E = a.length; f < E; f++)
-              t.push(a[f]);
+          if (!r.isAnEndpoint(l)) {
+            const f = this._splitSafely(r, l);
+            for (let o = 0, a = f.length; o < a; o++)
+              t.push(f[o]);
           }
         }
       }
@@ -1511,47 +3851,47 @@ var ht = (i) => i, at = (i) => {
     const n = i.split(e);
     return n.push(t), i.consumedBy === void 0 && this.tree.add(i), n;
   }
-}, xt = class {
+}, Ft = class {
   type;
   numMultiPolys;
   run(i, e, t) {
-    pe.type = i;
-    const n = [new je(e, !0)];
-    for (let p = 0, _ = t.length; p < _; p++)
-      n.push(new je(t[p], !1));
-    if (pe.numMultiPolys = n.length, pe.type === "difference") {
-      const p = n[0];
-      let _ = 1;
-      for (; _ < n.length; )
-        ke(n[_].bbox, p.bbox) !== null ? _++ : n.splice(_, 1);
+    ye.type = i;
+    const n = [new Ze(e, !0)];
+    for (let h = 0, E = t.length; h < E; h++)
+      n.push(new Ze(t[h], !1));
+    if (ye.numMultiPolys = n.length, ye.type === "difference") {
+      const h = n[0];
+      let E = 1;
+      for (; E < n.length; )
+        Ge(n[E].bbox, h.bbox) !== null ? E++ : n.splice(E, 1);
     }
-    if (pe.type === "intersection")
-      for (let p = 0, _ = n.length; p < _; p++) {
-        const T = n[p];
-        for (let b = p + 1, A = n.length; b < A; b++)
-          if (ke(T.bbox, n[b].bbox) === null) return [];
+    if (ye.type === "intersection")
+      for (let h = 0, E = n.length; h < E; h++) {
+        const S = n[h];
+        for (let A = h + 1, N = n.length; A < N; A++)
+          if (Ge(S.bbox, n[A].bbox) === null) return [];
       }
-    const r = new Ee(ee.compare);
-    for (let p = 0, _ = n.length; p < _; p++) {
-      const T = n[p].getSweepEvents();
-      for (let b = 0, A = T.length; b < A; b++)
-        r.add(T[b]);
+    const r = new Se(ee.compare);
+    for (let h = 0, E = n.length; h < E; h++) {
+      const S = n[h].getSweepEvents();
+      for (let A = 0, N = S.length; A < N; A++)
+        r.add(S[A]);
     }
-    const u = new mt(r);
-    let a = null;
-    for (r.size != 0 && (a = r.first(), r.delete(a)); a; ) {
-      const p = u.process(a);
-      for (let _ = 0, T = p.length; _ < T; _++) {
-        const b = p[_];
-        b.consumedBy === void 0 && r.add(b);
+    const l = new Bt(r);
+    let f = null;
+    for (r.size != 0 && (f = r.first(), r.delete(f)); f; ) {
+      const h = l.process(f);
+      for (let E = 0, S = h.length; E < S; E++) {
+        const A = h[E];
+        A.consumedBy === void 0 && r.add(A);
       }
-      r.size != 0 ? (a = r.first(), r.delete(a)) : a = null;
+      r.size != 0 ? (f = r.first(), r.delete(f)) : f = null;
     }
-    re.reset();
-    const f = yt.factory(u.segments);
-    return new dt(f).getGeom();
+    se.reset();
+    const o = Lt.factory(l.segments);
+    return new kt(o).getGeom();
   }
-}, pe = new xt(), qe = pe, wt = 0, Se = class we {
+}, ye = new Ft(), qe = ye, Gt = 0, Ae = class ve {
   id;
   leftSE;
   rightSE;
@@ -1578,63 +3918,63 @@ var ht = (i) => i, at = (i) => {
    * is directly on the right-more of the two left inputs.
    */
   static compare(e, t) {
-    const n = e.leftSE.point.x, r = t.leftSE.point.x, u = e.rightSE.point.x, a = t.rightSE.point.x;
-    if (a.isLessThan(n)) return 1;
-    if (u.isLessThan(r)) return -1;
-    const f = e.leftSE.point.y, E = t.leftSE.point.y, p = e.rightSE.point.y, _ = t.rightSE.point.y;
+    const n = e.leftSE.point.x, r = t.leftSE.point.x, l = e.rightSE.point.x, f = t.rightSE.point.x;
+    if (f.isLessThan(n)) return 1;
+    if (l.isLessThan(r)) return -1;
+    const o = e.leftSE.point.y, a = t.leftSE.point.y, h = e.rightSE.point.y, E = t.rightSE.point.y;
     if (n.isLessThan(r)) {
-      if (E.isLessThan(f) && E.isLessThan(p)) return 1;
-      if (E.isGreaterThan(f) && E.isGreaterThan(p)) return -1;
-      const T = e.comparePoint(t.leftSE.point);
-      if (T < 0) return 1;
-      if (T > 0) return -1;
-      const b = t.comparePoint(e.rightSE.point);
-      return b !== 0 ? b : -1;
+      if (a.isLessThan(o) && a.isLessThan(h)) return 1;
+      if (a.isGreaterThan(o) && a.isGreaterThan(h)) return -1;
+      const S = e.comparePoint(t.leftSE.point);
+      if (S < 0) return 1;
+      if (S > 0) return -1;
+      const A = t.comparePoint(e.rightSE.point);
+      return A !== 0 ? A : -1;
     }
     if (n.isGreaterThan(r)) {
-      if (f.isLessThan(E) && f.isLessThan(_)) return -1;
-      if (f.isGreaterThan(E) && f.isGreaterThan(_)) return 1;
-      const T = t.comparePoint(e.leftSE.point);
-      if (T !== 0) return T;
-      const b = e.comparePoint(t.rightSE.point);
-      return b < 0 ? 1 : b > 0 ? -1 : 1;
+      if (o.isLessThan(a) && o.isLessThan(E)) return -1;
+      if (o.isGreaterThan(a) && o.isGreaterThan(E)) return 1;
+      const S = t.comparePoint(e.leftSE.point);
+      if (S !== 0) return S;
+      const A = e.comparePoint(t.rightSE.point);
+      return A < 0 ? 1 : A > 0 ? -1 : 1;
     }
-    if (f.isLessThan(E)) return -1;
-    if (f.isGreaterThan(E)) return 1;
-    if (u.isLessThan(a)) {
-      const T = t.comparePoint(e.rightSE.point);
-      if (T !== 0) return T;
+    if (o.isLessThan(a)) return -1;
+    if (o.isGreaterThan(a)) return 1;
+    if (l.isLessThan(f)) {
+      const S = t.comparePoint(e.rightSE.point);
+      if (S !== 0) return S;
     }
-    if (u.isGreaterThan(a)) {
-      const T = e.comparePoint(t.rightSE.point);
-      if (T < 0) return 1;
-      if (T > 0) return -1;
+    if (l.isGreaterThan(f)) {
+      const S = e.comparePoint(t.rightSE.point);
+      if (S < 0) return 1;
+      if (S > 0) return -1;
     }
-    if (!u.eq(a)) {
-      const T = p.minus(f), b = u.minus(n), A = _.minus(E), N = a.minus(r);
-      if (T.isGreaterThan(b) && A.isLessThan(N)) return 1;
-      if (T.isLessThan(b) && A.isGreaterThan(N)) return -1;
+    if (!l.eq(f)) {
+      const S = h.minus(o), A = l.minus(n), N = E.minus(a), O = f.minus(r);
+      if (S.isGreaterThan(A) && N.isLessThan(O)) return 1;
+      if (S.isLessThan(A) && N.isGreaterThan(O)) return -1;
     }
-    return u.isGreaterThan(a) ? 1 : u.isLessThan(a) || p.isLessThan(_) ? -1 : p.isGreaterThan(_) ? 1 : e.id < t.id ? -1 : e.id > t.id ? 1 : 0;
+    return l.isGreaterThan(f) ? 1 : l.isLessThan(f) || h.isLessThan(E) ? -1 : h.isGreaterThan(E) ? 1 : e.id < t.id ? -1 : e.id > t.id ? 1 : 0;
   }
   /* Warning: a reference to ringWindings input will be stored,
    *  and possibly will be later modified */
   constructor(e, t, n, r) {
-    this.id = ++wt, this.leftSE = e, e.segment = this, e.otherSE = t, this.rightSE = t, t.segment = this, t.otherSE = e, this.rings = n, this.windings = r;
+    this.id = ++Gt, this.leftSE = e, e.segment = this, e.otherSE = t, this.rightSE = t, t.segment = this, t.otherSE = e, this.rings = n, this.windings = r;
   }
   static fromRing(e, t, n) {
-    let r, u, a;
-    const f = ee.comparePoints(e, t);
-    if (f < 0)
-      r = e, u = t, a = 1;
-    else if (f > 0)
-      r = t, u = e, a = -1;
+    let r, l, f;
+    const o = ee.comparePoints(e, t);
+    if (o < 0)
+      r = e, l = t, f = 1;
+    else if (o > 0)
+      r = t, l = e, f = -1;
     else
       throw new Error(
         \`Tried to create degenerate segment at [\${e.x}, \${e.y}]\`
       );
-    const E = new ee(r, !0), p = new ee(u, !1);
-    return new we(E, p, [n], [a]);
+    const a = new ee(r, !0), h = new ee(l, !1);
+    return new ve(a, h, [n], [f]);
   }
   /* When a segment is split, the rightSE is replaced with a new sweep event */
   replaceRightSE(e) {
@@ -1671,7 +4011,7 @@ var ht = (i) => i, at = (i) => {
    *  -1: point lies below the segment (to the right of vertical)
    */
   comparePoint(e) {
-    return re.orient(this.leftSE.point, e, this.rightSE.point);
+    return se.orient(this.leftSE.point, e, this.rightSE.point);
   }
   /**
    * Given another segment, returns the first non-trivial intersection
@@ -1689,20 +4029,20 @@ var ht = (i) => i, at = (i) => {
    * Else, return null.
    */
   getIntersection(e) {
-    const t = this.bbox(), n = e.bbox(), r = ke(t, n);
+    const t = this.bbox(), n = e.bbox(), r = Ge(t, n);
     if (r === null) return null;
-    const u = this.leftSE.point, a = this.rightSE.point, f = e.leftSE.point, E = e.rightSE.point, p = ae(t, f) && this.comparePoint(f) === 0, _ = ae(n, u) && e.comparePoint(u) === 0, T = ae(t, E) && this.comparePoint(E) === 0, b = ae(n, a) && e.comparePoint(a) === 0;
-    if (_ && p)
-      return b && !T ? a : !b && T ? E : null;
-    if (_)
-      return T && u.x.eq(E.x) && u.y.eq(E.y) ? null : u;
-    if (p)
-      return b && a.x.eq(f.x) && a.y.eq(f.y) ? null : f;
-    if (b && T) return null;
-    if (b) return a;
-    if (T) return E;
-    const A = gt(u, this.vector(), f, e.vector());
-    return A === null || !ae(r, A) ? null : re.snap(A);
+    const l = this.leftSE.point, f = this.rightSE.point, o = e.leftSE.point, a = e.rightSE.point, h = ce(t, o) && this.comparePoint(o) === 0, E = ce(n, l) && e.comparePoint(l) === 0, S = ce(t, a) && this.comparePoint(a) === 0, A = ce(n, f) && e.comparePoint(f) === 0;
+    if (E && h)
+      return A && !S ? f : !A && S ? a : null;
+    if (E)
+      return S && l.x.eq(a.x) && l.y.eq(a.y) ? null : l;
+    if (h)
+      return A && f.x.eq(o.x) && f.y.eq(o.y) ? null : o;
+    if (A && S) return null;
+    if (A) return f;
+    if (S) return a;
+    const N = It(l, this.vector(), o, e.vector());
+    return N === null || !ce(r, N) ? null : se.snap(N);
   }
   /**
    * Split the given segment into multiple segments on the given points.
@@ -1717,15 +4057,15 @@ var ht = (i) => i, at = (i) => {
    * Warning: input array of points is modified
    */
   split(e) {
-    const t = [], n = e.events !== void 0, r = new ee(e, !0), u = new ee(e, !1), a = this.rightSE;
-    this.replaceRightSE(u), t.push(u), t.push(r);
-    const f = new we(
+    const t = [], n = e.events !== void 0, r = new ee(e, !0), l = new ee(e, !1), f = this.rightSE;
+    this.replaceRightSE(l), t.push(l), t.push(r);
+    const o = new ve(
       r,
-      a,
+      f,
       this.rings.slice(),
       this.windings.slice()
     );
-    return ee.comparePoints(f.leftSE.point, f.rightSE.point) > 0 && f.swapEvents(), ee.comparePoints(this.leftSE.point, this.rightSE.point) > 0 && this.swapEvents(), n && (r.checkForConsuming(), u.checkForConsuming()), t;
+    return ee.comparePoints(o.leftSE.point, o.rightSE.point) > 0 && o.swapEvents(), ee.comparePoints(this.leftSE.point, this.rightSE.point) > 0 && this.swapEvents(), n && (r.checkForConsuming(), l.checkForConsuming()), t;
   }
   /* Swap which event is left and right */
   swapEvents() {
@@ -1740,19 +4080,19 @@ var ht = (i) => i, at = (i) => {
     let t = this, n = e;
     for (; t.consumedBy; ) t = t.consumedBy;
     for (; n.consumedBy; ) n = n.consumedBy;
-    const r = we.compare(t, n);
+    const r = ve.compare(t, n);
     if (r !== 0) {
       if (r > 0) {
-        const u = t;
-        t = n, n = u;
+        const l = t;
+        t = n, n = l;
       }
       if (t.prev === n) {
-        const u = t;
-        t = n, n = u;
+        const l = t;
+        t = n, n = l;
       }
-      for (let u = 0, a = n.rings.length; u < a; u++) {
-        const f = n.rings[u], E = n.windings[u], p = t.rings.indexOf(f);
-        p === -1 ? (t.rings.push(f), t.windings.push(E)) : t.windings[p] += E;
+      for (let l = 0, f = n.rings.length; l < f; l++) {
+        const o = n.rings[l], a = n.windings[l], h = t.rings.indexOf(o);
+        h === -1 ? (t.rings.push(o), t.windings.push(a)) : t.windings[h] += a;
       }
       n.rings = null, n.windings = null, n.consumedBy = t, n.leftSE.consumedBy = t.leftSE, n.rightSE.consumedBy = t.rightSE;
     }
@@ -1784,25 +4124,25 @@ var ht = (i) => i, at = (i) => {
       multiPolys: []
     };
     const t = this._afterState.rings, n = this._afterState.windings, r = this._afterState.multiPolys;
-    for (let f = 0, E = this.rings.length; f < E; f++) {
-      const p = this.rings[f], _ = this.windings[f], T = t.indexOf(p);
-      T === -1 ? (t.push(p), n.push(_)) : n[T] += _;
+    for (let o = 0, a = this.rings.length; o < a; o++) {
+      const h = this.rings[o], E = this.windings[o], S = t.indexOf(h);
+      S === -1 ? (t.push(h), n.push(E)) : n[S] += E;
     }
-    const u = [], a = [];
-    for (let f = 0, E = t.length; f < E; f++) {
-      if (n[f] === 0) continue;
-      const p = t[f], _ = p.poly;
-      if (a.indexOf(_) === -1)
-        if (p.isExterior) u.push(_);
+    const l = [], f = [];
+    for (let o = 0, a = t.length; o < a; o++) {
+      if (n[o] === 0) continue;
+      const h = t[o], E = h.poly;
+      if (f.indexOf(E) === -1)
+        if (h.isExterior) l.push(E);
         else {
-          a.indexOf(_) === -1 && a.push(_);
-          const T = u.indexOf(p.poly);
-          T !== -1 && u.splice(T, 1);
+          f.indexOf(E) === -1 && f.push(E);
+          const S = l.indexOf(h.poly);
+          S !== -1 && l.splice(S, 1);
         }
     }
-    for (let f = 0, E = u.length; f < E; f++) {
-      const p = u[f].multiPoly;
-      r.indexOf(p) === -1 && r.push(p);
+    for (let o = 0, a = l.length; o < a; o++) {
+      const h = l[o].multiPoly;
+      r.indexOf(h) === -1 && r.push(h);
     }
     return this._afterState;
   }
@@ -1835,7 +4175,7 @@ var ht = (i) => i, at = (i) => {
     }
     return this._isInResult;
   }
-}, Ve = class {
+}, He = class {
   poly;
   isExterior;
   segments;
@@ -1845,19 +4185,19 @@ var ht = (i) => i, at = (i) => {
       throw new Error("Input geometry is not a valid Polygon or MultiPolygon");
     if (this.poly = e, this.isExterior = t, this.segments = [], typeof i[0][0] != "number" || typeof i[0][1] != "number")
       throw new Error("Input geometry is not a valid Polygon or MultiPolygon");
-    const n = re.snap({ x: new te(i[0][0]), y: new te(i[0][1]) });
+    const n = se.snap({ x: new te(i[0][0]), y: new te(i[0][1]) });
     this.bbox = {
       ll: { x: n.x, y: n.y },
       ur: { x: n.x, y: n.y }
     };
     let r = n;
-    for (let u = 1, a = i.length; u < a; u++) {
-      if (typeof i[u][0] != "number" || typeof i[u][1] != "number")
+    for (let l = 1, f = i.length; l < f; l++) {
+      if (typeof i[l][0] != "number" || typeof i[l][1] != "number")
         throw new Error("Input geometry is not a valid Polygon or MultiPolygon");
-      const f = re.snap({ x: new te(i[u][0]), y: new te(i[u][1]) });
-      f.x.eq(r.x) && f.y.eq(r.y) || (this.segments.push(Se.fromRing(r, f, this)), f.x.isLessThan(this.bbox.ll.x) && (this.bbox.ll.x = f.x), f.y.isLessThan(this.bbox.ll.y) && (this.bbox.ll.y = f.y), f.x.isGreaterThan(this.bbox.ur.x) && (this.bbox.ur.x = f.x), f.y.isGreaterThan(this.bbox.ur.y) && (this.bbox.ur.y = f.y), r = f);
+      const o = se.snap({ x: new te(i[l][0]), y: new te(i[l][1]) });
+      o.x.eq(r.x) && o.y.eq(r.y) || (this.segments.push(Ae.fromRing(r, o, this)), o.x.isLessThan(this.bbox.ll.x) && (this.bbox.ll.x = o.x), o.y.isLessThan(this.bbox.ll.y) && (this.bbox.ll.y = o.y), o.x.isGreaterThan(this.bbox.ur.x) && (this.bbox.ur.x = o.x), o.y.isGreaterThan(this.bbox.ur.y) && (this.bbox.ur.y = o.y), r = o);
     }
-    (!n.x.eq(r.x) || !n.y.eq(r.y)) && this.segments.push(Se.fromRing(r, n, this));
+    (!n.x.eq(r.x) || !n.y.eq(r.y)) && this.segments.push(Ae.fromRing(r, n, this));
   }
   getSweepEvents() {
     const i = [];
@@ -1867,7 +4207,7 @@ var ht = (i) => i, at = (i) => {
     }
     return i;
   }
-}, Et = class {
+}, zt = class {
   multiPoly;
   exteriorRing;
   interiorRings;
@@ -1875,12 +4215,12 @@ var ht = (i) => i, at = (i) => {
   constructor(i, e) {
     if (!Array.isArray(i))
       throw new Error("Input geometry is not a valid Polygon or MultiPolygon");
-    this.exteriorRing = new Ve(i[0], this, !0), this.bbox = {
+    this.exteriorRing = new He(i[0], this, !0), this.bbox = {
       ll: { x: this.exteriorRing.bbox.ll.x, y: this.exteriorRing.bbox.ll.y },
       ur: { x: this.exteriorRing.bbox.ur.x, y: this.exteriorRing.bbox.ur.y }
     }, this.interiorRings = [];
     for (let t = 1, n = i.length; t < n; t++) {
-      const r = new Ve(i[t], this, !1);
+      const r = new He(i[t], this, !1);
       r.bbox.ll.x.isLessThan(this.bbox.ll.x) && (this.bbox.ll.x = r.bbox.ll.x), r.bbox.ll.y.isLessThan(this.bbox.ll.y) && (this.bbox.ll.y = r.bbox.ll.y), r.bbox.ur.x.isGreaterThan(this.bbox.ur.x) && (this.bbox.ur.x = r.bbox.ur.x), r.bbox.ur.y.isGreaterThan(this.bbox.ur.y) && (this.bbox.ur.y = r.bbox.ur.y), this.interiorRings.push(r);
     }
     this.multiPoly = e;
@@ -1889,12 +4229,12 @@ var ht = (i) => i, at = (i) => {
     const i = this.exteriorRing.getSweepEvents();
     for (let e = 0, t = this.interiorRings.length; e < t; e++) {
       const n = this.interiorRings[e].getSweepEvents();
-      for (let r = 0, u = n.length; r < u; r++)
+      for (let r = 0, l = n.length; r < l; r++)
         i.push(n[r]);
     }
     return i;
   }
-}, je = class {
+}, Ze = class {
   isSubject;
   polys;
   bbox;
@@ -1910,7 +4250,7 @@ var ht = (i) => i, at = (i) => {
       ur: { x: new te(Number.NEGATIVE_INFINITY), y: new te(Number.NEGATIVE_INFINITY) }
     };
     for (let t = 0, n = i.length; t < n; t++) {
-      const r = new Et(i[t], this);
+      const r = new zt(i[t], this);
       r.bbox.ll.x.isLessThan(this.bbox.ll.x) && (this.bbox.ll.x = r.bbox.ll.x), r.bbox.ll.y.isLessThan(this.bbox.ll.y) && (this.bbox.ll.y = r.bbox.ll.y), r.bbox.ur.x.isGreaterThan(this.bbox.ur.x) && (this.bbox.ur.x = r.bbox.ur.x), r.bbox.ur.y.isGreaterThan(this.bbox.ur.y) && (this.bbox.ur.y = r.bbox.ur.y), this.polys.push(r);
     }
     this.isSubject = e;
@@ -1919,506 +4259,197 @@ var ht = (i) => i, at = (i) => {
     const i = [];
     for (let e = 0, t = this.polys.length; e < t; e++) {
       const n = this.polys[e].getSweepEvents();
-      for (let r = 0, u = n.length; r < u; r++)
+      for (let r = 0, l = n.length; r < l; r++)
         i.push(n[r]);
     }
     return i;
   }
-}, vt = (i, ...e) => qe.run("union", i, e);
-re.set;
-var Ke = 63710088e-1;
-function be(i, e, t = {}) {
-  const n = { type: "Feature" };
-  return (t.id === 0 || t.id) && (n.id = t.id), t.bbox && (n.bbox = t.bbox), n.properties = e || {}, n.geometry = i, n;
-}
-function St(i, e, t = {}) {
-  for (const r of i) {
-    if (r.length < 4)
-      throw new Error(
-        "Each LinearRing of a Polygon must have 4 or more Positions."
-      );
-    if (r[r.length - 1].length !== r[0].length)
-      throw new Error("First and last Position are not equivalent.");
-    for (let u = 0; u < r[r.length - 1].length; u++)
-      if (r[r.length - 1][u] !== r[0][u])
-        throw new Error("First and last Position are not equivalent.");
-  }
-  return be({
-    type: "Polygon",
-    coordinates: i
-  }, e, t);
-}
-function bt(i, e = {}) {
-  const t = { type: "FeatureCollection" };
-  return e.id && (t.id = e.id), e.bbox && (t.bbox = e.bbox), t.features = i, t;
-}
-function Tt(i, e, t = {}) {
-  return be({
-    type: "MultiPolygon",
-    coordinates: i
-  }, e, t);
-}
-function Fe(i, e) {
-  var t, n, r, u, a, f, E, p, _, T, b = 0, A = i.type === "FeatureCollection", N = i.type === "Feature", O = A ? i.features.length : 1;
-  for (t = 0; t < O; t++) {
-    for (f = A ? (
-      // @ts-expect-error: Known type conflict
-      i.features[t].geometry
-    ) : N ? (
-      // @ts-expect-error: Known type conflict
-      i.geometry
-    ) : i, p = A ? (
-      // @ts-expect-error: Known type conflict
-      i.features[t].properties
-    ) : N ? (
-      // @ts-expect-error: Known type conflict
-      i.properties
-    ) : {}, _ = A ? (
-      // @ts-expect-error: Known type conflict
-      i.features[t].bbox
-    ) : N ? (
-      // @ts-expect-error: Known type conflict
-      i.bbox
-    ) : void 0, T = A ? (
-      // @ts-expect-error: Known type conflict
-      i.features[t].id
-    ) : N ? (
-      // @ts-expect-error: Known type conflict
-      i.id
-    ) : void 0, E = f ? f.type === "GeometryCollection" : !1, a = E ? f.geometries.length : 1, r = 0; r < a; r++) {
-      if (u = E ? f.geometries[r] : f, u === null) {
-        if (
-          // @ts-expect-error: Known type conflict
-          e(
-            // @ts-expect-error: Known type conflict
-            null,
-            b,
-            p,
-            _,
-            T
-          ) === !1
-        )
-          return !1;
-        continue;
-      }
-      switch (u.type) {
-        case "Point":
-        case "LineString":
-        case "MultiPoint":
-        case "Polygon":
-        case "MultiLineString":
-        case "MultiPolygon": {
-          if (
-            // @ts-expect-error: Known type conflict
-            e(
-              u,
-              b,
-              p,
-              _,
-              T
-            ) === !1
-          )
-            return !1;
-          break;
-        }
-        case "GeometryCollection": {
-          for (n = 0; n < u.geometries.length; n++)
-            if (
-              // @ts-expect-error: Known type conflict
-              e(
-                u.geometries[n],
-                b,
-                p,
-                _,
-                T
-              ) === !1
-            )
-              return !1;
-          break;
-        }
-        default:
-          throw new Error("Unknown Geometry Type");
-      }
-    }
-    b++;
-  }
-}
-function _t(i, e, t) {
-  var n = t;
-  return Fe(
-    i,
-    function(r, u, a, f, E) {
-      n = e(
-        // @ts-expect-error: Known type conflict
-        n,
-        r,
-        u,
-        a,
-        f,
-        E
-      );
-    }
-  ), n;
-}
-function Rt(i, e) {
-  Fe(i, function(t, n, r, u, a) {
-    var f = t === null ? null : t.type;
-    switch (f) {
-      case null:
-      case "Point":
-      case "LineString":
-      case "Polygon":
-        return (
-          // @ts-expect-error: Known type conflict
-          e(
-            be(t, r, { bbox: u, id: a }),
-            n,
-            0
-          ) === !1 ? !1 : void 0
-        );
-    }
-    var E;
-    switch (f) {
-      case "MultiPoint":
-        E = "Point";
-        break;
-      case "MultiLineString":
-        E = "LineString";
-        break;
-      case "MultiPolygon":
-        E = "Polygon";
-        break;
-    }
-    for (
-      var p = 0;
-      // @ts-expect-error: Known type conflict
-      p < t.coordinates.length;
-      p++
-    ) {
-      var _ = t.coordinates[p], T = {
-        type: E,
-        coordinates: _
-      };
-      if (
-        // @ts-expect-error: Known type conflict
-        e(be(T, r), n, p) === !1
-      )
-        return !1;
-    }
-  });
-}
-function Mt(i, e = {}) {
+}, qt = (i, ...e) => qe.run("union", i, e);
+se.set;
+function Dt(i, e = {}) {
   const t = [];
-  if (Fe(i, (r) => {
+  if (De(i, (r) => {
     t.push(r.coordinates);
   }), t.length < 2)
     throw new Error("Must have at least 2 geometries");
-  const n = vt(t[0], ...t.slice(1));
-  return n.length === 0 ? null : n.length === 1 ? St(n[0], e.properties) : Tt(n, e.properties);
+  const n = qt(t[0], ...t.slice(1));
+  return n.length === 0 ? null : n.length === 1 ? yt(n[0], e.properties) : mt(n, e.properties);
 }
-function Xe(i) {
+function Je(i) {
   if (!i) throw new Error("geojson is required");
   var e = [];
-  return Rt(i, function(t) {
+  return wt(i, function(t) {
     e.push(t);
-  }), bt(e);
+  }), dt(e);
 }
-class Pt {
-  constructor(e = [], t = (n, r) => n < r ? -1 : n > r ? 1 : 0) {
-    if (this.data = e, this.length = this.data.length, this.compare = t, this.length > 0)
-      for (let n = (this.length >> 1) - 1; n >= 0; n--) this._down(n);
+const Le = /* @__PURE__ */ new WeakMap();
+let Ut = 0;
+const Pe = (i) => (Le.has(i) || Le.set(i, String(Ut++)), Le.get(i));
+new re(
+  (i, e, t) => {
+    const [n, r, l] = e.split("|").map(Number), f = Math.pow(2, n) * t, o = 85.05112878, a = 1;
+    return i[0].some((E) => {
+      const S = Math.max(Math.min(E[1], o), -o), A = Math.sin(S * Math.PI / 180), N = (E[0] + 180) / 360, O = 0.5 - Math.log((1 + A) / (1 - A)) / (4 * Math.PI), b = N * f, k = O * f, B = Math.floor(b / t), _ = Math.floor(k / t), j = Math.floor(b - B * t), W = Math.floor(k - _ * t);
+      return _ !== l || B !== r || j <= a || W <= a || j >= t - a || W >= t - a;
+    });
+  },
+  {
+    keyResolver: (i, e, t) => \`\${Pe(i)}|\${e}|\${t}\`
   }
-  push(e) {
-    this.data.push(e), this._up(this.length++);
-  }
-  pop() {
-    if (this.length === 0) return;
-    const e = this.data[0], t = this.data.pop();
-    return --this.length > 0 && (this.data[0] = t, this._down(0)), e;
-  }
-  peek() {
-    return this.data[0];
-  }
-  _up(e) {
-    const { data: t, compare: n } = this, r = t[e];
-    for (; e > 0; ) {
-      const u = e - 1 >> 1, a = t[u];
-      if (n(r, a) >= 0) break;
-      t[e] = a, e = u;
-    }
-    t[e] = r;
-  }
-  _down(e) {
-    const { data: t, compare: n } = this, r = this.length >> 1, u = t[e];
-    for (; e < r; ) {
-      let a = (e << 1) + 1;
-      const f = a + 1;
-      if (f < this.length && n(t[f], t[a]) < 0 && (a = f), n(t[a], u) >= 0) break;
-      t[e] = t[a], e = a;
-    }
-    t[e] = u;
-  }
-}
-function Ot(i, e = 1, t = !1) {
-  let n = 1 / 0, r = 1 / 0, u = -1 / 0, a = -1 / 0;
-  for (const [k, S] of i[0])
-    k < n && (n = k), S < r && (r = S), k > u && (u = k), S > a && (a = S);
-  const f = u - n, E = a - r, p = Math.max(e, Math.min(f, E));
-  if (p === e) {
-    const k = [n, r];
-    return k.distance = 0, k;
-  }
-  const _ = new Pt([], (k, S) => S.max - k.max);
-  let T = Lt(i);
-  const b = new Te(n + f / 2, r + E / 2, 0, i);
-  b.d > T.d && (T = b);
-  let A = 2;
-  function N(k, S, Z) {
-    const J = new Te(k, S, Z, i);
-    A++, J.max > T.d + e && _.push(J), J.d > T.d && (T = J, t && console.log(\`found best \${Math.round(1e4 * J.d) / 1e4} after \${A} probes\`));
-  }
-  let O = p / 2;
-  for (let k = n; k < u; k += p)
-    for (let S = r; S < a; S += p)
-      N(k + O, S + O, O);
-  for (; _.length; ) {
-    const { max: k, x: S, y: Z, h: J } = _.pop();
-    if (k - T.d <= e) break;
-    O = J / 2, N(S - O, Z - O, O), N(S + O, Z - O, O), N(S - O, Z + O, O), N(S + O, Z + O, O);
-  }
-  t && console.log(\`num probes: \${A}
-best distance: \${T.d}\`);
-  const B = [T.x, T.y];
-  return B.distance = T.d, B;
-}
-function Te(i, e, t, n) {
-  this.x = i, this.y = e, this.h = t, this.d = At(i, e, n), this.max = this.d + this.h * Math.SQRT2;
-}
-function At(i, e, t) {
-  let n = !1, r = 1 / 0;
-  for (const u of t)
-    for (let a = 0, f = u.length, E = f - 1; a < f; E = a++) {
-      const p = u[a], _ = u[E];
-      p[1] > e != _[1] > e && i < (_[0] - p[0]) * (e - p[1]) / (_[1] - p[1]) + p[0] && (n = !n), r = Math.min(r, It(i, e, p, _));
-    }
-  return r === 0 ? 0 : (n ? 1 : -1) * Math.sqrt(r);
-}
-function Lt(i) {
-  let e = 0, t = 0, n = 0;
-  const r = i[0];
-  for (let a = 0, f = r.length, E = f - 1; a < f; E = a++) {
-    const p = r[a], _ = r[E], T = p[0] * _[1] - _[0] * p[1];
-    t += (p[0] + _[0]) * T, n += (p[1] + _[1]) * T, e += T * 3;
-  }
-  const u = new Te(t / e, n / e, 0, i);
-  return e === 0 || u.d < 0 ? new Te(r[0][0], r[0][1], 0, i) : u;
-}
-function It(i, e, t, n) {
-  let r = t[0], u = t[1], a = n[0] - r, f = n[1] - u;
-  if (a !== 0 || f !== 0) {
-    const E = ((i - r) * a + (e - u) * f) / (a * a + f * f);
-    E > 1 ? (r = n[0], u = n[1]) : E > 0 && (r += a * E, u += f * E);
-  }
-  return a = i - r, f = e - u, a * a + f * f;
-}
-function Ye(i) {
-  return _t(
-    i,
-    (e, t) => e + Nt(t),
-    0
-  );
-}
-function Nt(i) {
-  let e = 0, t;
-  switch (i.type) {
-    case "Polygon":
-      return He(i.coordinates);
-    case "MultiPolygon":
-      for (t = 0; t < i.coordinates.length; t++)
-        e += He(i.coordinates[t]);
-      return e;
-    case "Point":
-    case "MultiPoint":
-    case "LineString":
-    case "MultiLineString":
-      return 0;
-  }
-  return 0;
-}
-function He(i) {
-  let e = 0;
-  if (i && i.length > 0) {
-    e += Math.abs(We(i[0]));
-    for (let t = 1; t < i.length; t++)
-      e -= Math.abs(We(i[t]));
-  }
-  return e;
-}
-var Ct = Ke * Ke / 2, Le = Math.PI / 180;
-function We(i) {
-  const e = i.length - 1;
-  if (e <= 2) return 0;
-  let t = 0, n = 0;
-  for (; n < e; ) {
-    const r = i[n], u = i[n + 1 === e ? 0 : n + 1], a = i[n + 2 >= e ? (n + 2) % e : n + 2], f = r[0] * Le, E = u[1] * Le, p = a[0] * Le;
-    t += (p - f) * Math.sin(E), n++;
-  }
-  return t * Ct;
-}
-const Ie = /* @__PURE__ */ new WeakMap(), Ze = /* @__PURE__ */ new WeakMap(), Bt = (i, e) => {
-  try {
-    if (i.geometry.type !== "Polygon")
-      throw new Error("Non-Polygon geometry");
-    if (i && typeof i == "object") {
-      let u = Ie.get(i);
-      const a = e === void 0 ? "__default" : String(e);
-      if (u && u.has(a))
-        return u.get(a);
-    }
-    const t = i && i.geometry && i.geometry.coordinates;
-    let n = Ot(t, e);
-    if (!Array.isArray(n) || !Number.isFinite(n[0]) || !Number.isFinite(n[1]))
-      throw new Error("Invalid polylabel result");
-    const r = {
-      type: "Point",
-      coordinates: [n[0], n[1]]
+);
+new re(
+  (i, e = !1) => {
+    const t = e ? /* @__PURE__ */ new Set() : null;
+    let n = 0;
+    const r = (a) => Array.isArray(a) && a.length >= 2 && typeof a[0] == "number" && typeof a[1] == "number", l = (a) => {
+      e ? t.add(a.slice(0, 3).join(",")) : n++;
     };
-    if (i && typeof i == "object") {
-      let u = Ie.get(i);
-      u || (u = /* @__PURE__ */ new Map(), Ie.set(i, u)), u.set(e === void 0 ? "__default" : String(e), r);
+    function f(a) {
+      if (r(a)) {
+        l(a);
+        return;
+      }
+      if (Array.isArray(a)) for (const h of a) f(h);
     }
-    return r;
-  } catch {
-    return console.log("Invalid feature geometry", i && i.id), pointOnFeature(i).geometry;
-  }
-}, me = (i) => {
-  if (!i) return 0;
-  let e = 0;
-  for (let t = 0; t < i.length; t++) {
-    const n = (t + 1) % i.length;
-    e += i[t][0] * i[n][1], e -= i[n][0] * i[t][1];
-  }
-  return Math.abs(e) / 2;
-}, kt = (i, e) => {
-  try {
-    if (i && typeof i == "object") {
-      let t = Ze.get(i);
-      const n = e === "meters" ? "meters" : e || "__planar";
-      if (t && t.has(n))
-        return t.get(n);
-      let r;
-      if (e === "meters")
-        r = Ye(i);
-      else {
-        const u = i && i.geometry;
-        if (!u || u.type !== "Polygon")
-          r = 0;
-        else {
-          const a = u && u.coordinates;
-          let f = me(a[0]);
-          for (let E = 1; E < a.length; E++)
-            f -= me(a[E]);
-          r = f;
+    function o(a) {
+      if (a) {
+        if (a.type === "FeatureCollection") {
+          for (const h of a.features || []) o(h);
+          return;
         }
-      }
-      return t || (t = /* @__PURE__ */ new Map(), Ze.set(i, t)), t.set(n, r), r;
-    } else {
-      if (e === "meters")
-        return Ye(i);
-      {
-        const t = i && i.geometry;
-        if (!t || t.type !== "Polygon") return 0;
-        const n = t && t.coordinates;
-        let r = me(n[0]);
-        for (let u = 1; u < n.length; u++)
-          r -= me(n[u]);
-        return r;
+        if (a.type === "Feature") {
+          o(a.geometry);
+          return;
+        }
+        if (a.type === "GeometryCollection") {
+          for (const h of a.geometries || []) o(h);
+          return;
+        }
+        a.coordinates !== void 0 && f(a.coordinates);
       }
     }
+    return o(i), e ? t.size : n;
+  },
+  {
+    keyResolver: (i, e = !1) => \`\${Pe(i)}|\${e ? "unique" : "__count"}\`
+  }
+);
+const Vt = (i, e) => {
+  if (!i || i.geometry?.type !== "Polygon")
+    throw new Error("Non-Polygon geometry");
+  const t = i.geometry.coordinates, n = at(t, e);
+  if (!Array.isArray(n) || !Number.isFinite(n[0]) || !Number.isFinite(n[1]))
+    throw new Error("Invalid polylabel result");
+  return {
+    type: "Point",
+    coordinates: [n[0], n[1]]
+  };
+}, $t = new re(Vt, {
+  keyResolver: (i, e) => \`\${Pe(i)}|\${e === void 0 ? "__default" : String(e)}\`
+}), jt = (i) => {
+  const e = i?.geometry?.coordinates;
+  if (!Array.isArray(e) || !Array.isArray(e[0]))
+    return { type: "Point", coordinates: [0, 0] };
+  const t = e[0];
+  let n = 0, r = 0, l = 0;
+  for (let o = 0; o < t.length; o++) {
+    const [a, h] = t[o], [E, S] = t[(o + 1) % t.length], A = a * S - E * h;
+    n += (a + E) * A, r += (h + S) * A, l += A;
+  }
+  if (l === 0)
+    return { type: "Point", coordinates: t[0] || [0, 0] };
+  const f = 1 / (3 * l);
+  return { type: "Point", coordinates: [n * f, r * f] };
+}, Wt = (i, e) => {
+  try {
+    return $t(i, e);
+  } catch {
+    return jt(i);
+  }
+}, rt = (i, e) => {
+  if (!i || typeof i != "object" || !i.geometry)
+    return 0;
+  if (e === "meters" || e === "m")
+    return vt(i);
+  const t = i.geometry.coordinates;
+  if (!Array.isArray(t) || t.length === 0)
+    return 0;
+  const n = i.geometry.type === "Polygon" ? t[0] : t[0]?.[0];
+  if (!Array.isArray(n))
+    return 0;
+  let r = 0;
+  for (let l = 0; l < n.length; l++) {
+    const [f, o] = n[l], [a, h] = n[(l + 1) % n.length];
+    r += f * h - a * o;
+  }
+  return Math.abs(r) / 2;
+}, Xt = new re(rt, {
+  keyResolver: (i, e) => \`\${Pe(i)}|\${e === void 0 ? "__planar" : String(e)}\`
+}), Kt = (i, e) => {
+  try {
+    return i && typeof i == "object" ? Xt(i, e) : rt(i, e);
   } catch (t) {
     return console.log("Error computing area for feature", i && i.id, t), 0;
   }
-};
-var le, ue, Gt = (i) => {
-  if (i instanceof Uint8Array) return i;
-  if (ArrayBuffer.isView(i)) return new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
-  if (i instanceof ArrayBuffer) return new Uint8Array(i);
-  const e = JSON.stringify(i), t = le !== void 0 ? le === !1 ? null : le : typeof TextEncoder < "u" ? le = new TextEncoder() : typeof Buffer < "u" && typeof Buffer.from == "function" ? le = { encode: (n) => new Uint8Array(Buffer.from(n)) } : (le = !1, null);
-  if (t && typeof t.encode == "function") return t.encode(e);
-  throw new Error("No TextEncoder or Buffer available to encode object");
-}, qt = (i) => {
-  let e;
-  if (i instanceof Uint8Array) e = i;
-  else if (ArrayBuffer.isView(i)) e = new Uint8Array(i.buffer, i.byteOffset, i.byteLength);
-  else if (i instanceof ArrayBuffer) e = new Uint8Array(i);
-  else {
-    if (typeof Buffer > "u" || typeof Buffer.isBuffer != "function" || !Buffer.isBuffer(i)) throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");
-    e = new Uint8Array(i);
-  }
-  const t = ue !== void 0 ? ue === !1 ? null : ue : typeof TextDecoder < "u" ? ue = new TextDecoder() : typeof Buffer < "u" && typeof Buffer.from == "function" ? ue = { decode: (n) => Buffer.from(n).toString("utf8") } : (ue = !1, null);
-  if (t && typeof t.decode == "function") return JSON.parse(t.decode(e));
-  if (typeof TextDecoder < "u") return JSON.parse(new TextDecoder().decode(e));
-  throw new Error("No TextDecoder or Buffer available to decode object");
-}, Je = null;
-if (typeof process < "u" && process.hrtime && typeof process.hrtime.bigint == "function") try {
-  const i = Number(process.hrtime.bigint() / 1000000n);
-  Je = Date.now() - i;
-} catch {
-  Je = null;
-}
-const Ne = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
-Ne.onmessage = (i) => {
-  const e = i.data, t = qt(e), n = Object.values(t.pieces), r = t.tolerance || 1e-5, u = t.unit || "meters";
+}, ke = typeof self < "u" ? self : typeof globalThis < "u" ? globalThis : {};
+ke.onmessage = (i) => {
+  const e = i.data, t = ut(e), n = Object.values(t.pieces), r = t.tolerance || 1e-5, l = t.unit || "meters";
   t.tileSize;
-  const a = /* @__PURE__ */ new Map();
-  n.forEach((f) => {
-    for (const [E, p] of Object.entries(f)) {
-      const _ = a.get(E) || [];
-      _.push(p), a.set(E, _);
+  const f = /* @__PURE__ */ new Map();
+  n.forEach((o) => {
+    for (const [a, h] of Object.entries(o)) {
+      const E = f.get(a) || [];
+      E.push(h), f.set(a, E);
     }
   });
-  for (const [f, E] of a.entries()) {
-    if (f === "size") continue;
-    let p = {
+  for (const [o, a] of f.entries()) {
+    if (o === "size") continue;
+    let h = {
       type: "FeatureCollection",
-      features: E.reduce((b, A) => [...b, ...A.features], []).filter((b) => b.geometry.type === "Polygon")
+      features: a.reduce((A, N) => [...A, ...N.features], []).filter((A) => A.geometry.type === "Polygon")
     };
-    if (p.features.some((b) => b.geometry.type === "MultiPolygon") && (p = Xe(p)), p.features.some((b) => b.properties.clipped) && p.features.length > 1) {
-      let b = {
+    if (h.features.some((A) => A.geometry.type === "MultiPolygon") && (h = Je(h)), h.features.some((A) => A.properties.clipped) && h.features.length > 1) {
+      let A = {
         type: "FeatureCollection",
-        features: p.features.filter((N) => N.properties.clipped)
+        features: h.features.filter((O) => O.properties.clipped)
       };
-      const A = p.features.filter((N) => !N.properties.clipped);
-      if (b.features.length > 1) {
-        const { clipped: N, ...O } = p.features[0].properties;
-        O._index = b.features.map((B) => B.properties._index).sort().join("-"), b = Mt(b), b = {
+      const N = h.features.filter((O) => !O.properties.clipped);
+      if (A.features.length > 1) {
+        const { clipped: O, ...b } = h.features[0].properties;
+        b._index = A.features.map((k) => k.properties._index).sort().join("-"), A = Dt(A), A = {
           type: "FeatureCollection",
-          features: [{
-            type: "Feature",
-            geometry: b.geometry,
-            properties: O
-          }]
+          features: [
+            {
+              type: "Feature",
+              geometry: A.geometry,
+              properties: b
+            }
+          ]
         };
       }
-      p = {
+      h = {
         type: "FeatureCollection",
-        features: [...A, ...b.features]
+        features: [...N, ...A.features]
       };
     }
-    p.features.some((b) => b.geometry.type === "MultiPolygon") && (p = Xe(p)), p.features = p.features.map((b, A) => {
-      const N = \`\${f}-\${A}\`, O = b.geometry, B = b.properties;
-      if (O && O.type === "Polygon") {
-        const k = kt(b, u);
-        b.geometry = Bt(b, r), b.properties = { ...B, _area: k, _groupId: f };
+    h.features.some((A) => A.geometry.type === "MultiPolygon") && (h = Je(h)), h.features = h.features.map((A, N) => {
+      const O = \`\${o}-\${N}\`, b = A.geometry, k = A.properties;
+      if (b && b.type === "Polygon") {
+        const B = Kt(A, l);
+        A.geometry = Wt(A, r), A.properties = { ...k, _area: B, _groupId: o };
       } else
-        console.log("Unexpected geometry type after union/simplify/flatten for id:" + f + " - type:" + (O && O.type)), b.properties = { ...B, _area: 0, _groupId: f };
-      return b.id = N, b;
+        console.log(
+          "Unexpected geometry type after union/simplify/flatten for id:" + o + " - type:" + (b && b.type)
+        ), A.properties = { ...k, _area: 0, _groupId: o };
+      return A.id = O, A;
     });
-    const _ = Math.max(...p.features.map((b) => b.properties && b.properties._area || 0));
-    p.features = p.features.map((b) => (b.properties && b.properties._area != null && b.properties._area > 0 ? (b.properties._localSortKey = _ / b.properties._area, b.properties._globalSortKey = 1 / b.properties._area) : (b.properties._localSortKey = 1 / 0, b.properties._globalSortKey = 1 / 0), b)), p.id = f;
-    const T = Gt(p).buffer;
-    Ne.postMessage(T, [T]);
+    const E = Math.max(
+      ...h.features.map((A) => A.properties && A.properties._area || 0)
+    );
+    h.features = h.features.map((A) => (A.properties && A.properties._area != null && A.properties._area > 0 ? (A.properties._localSortKey = E / A.properties._area, A.properties._globalSortKey = 1 / A.properties._area) : (A.properties._localSortKey = 1 / 0, A.properties._globalSortKey = 1 / 0), A)), h.id = o;
+    const S = lt(h).buffer;
+    ke.postMessage(S, [S]);
   }
-  Ne.postMessage({ type: "commit" });
+  ke.postMessage({ type: "commit" });
 };
-`,N=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",I],{type:"text/javascript;charset=utf-8"});function D(e){let t;try{if(t=N&&(self.URL||self.webkitURL).createObjectURL(N),!t)throw"";const n=new Worker(t,{type:"module",name:e?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(t)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(I),{type:"module",name:e?.name})}}var x,v,P=e=>{if(e instanceof Uint8Array)return e;if(ArrayBuffer.isView(e))return new Uint8Array(e.buffer,e.byteOffset,e.byteLength);if(e instanceof ArrayBuffer)return new Uint8Array(e);const t=JSON.stringify(e),n=x!==void 0?x===!1?null:x:typeof TextEncoder<"u"?x=new TextEncoder:typeof Buffer<"u"&&typeof Buffer.from=="function"?x={encode:r=>new Uint8Array(Buffer.from(r))}:(x=!1,null);if(n&&typeof n.encode=="function")return n.encode(t);throw new Error("No TextEncoder or Buffer available to encode object")},L=e=>{let t;if(e instanceof Uint8Array)t=e;else if(ArrayBuffer.isView(e))t=new Uint8Array(e.buffer,e.byteOffset,e.byteLength);else if(e instanceof ArrayBuffer)t=new Uint8Array(e);else{if(typeof Buffer>"u"||typeof Buffer.isBuffer!="function"||!Buffer.isBuffer(e))throw new TypeError("Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer");t=new Uint8Array(e)}const n=v!==void 0?v===!1?null:v:typeof TextDecoder<"u"?v=new TextDecoder:typeof Buffer<"u"&&typeof Buffer.from=="function"?v={decode:r=>Buffer.from(r).toString("utf8")}:(v=!1,null);if(n&&typeof n.decode=="function")return JSON.parse(n.decode(t));if(typeof TextDecoder<"u")return JSON.parse(new TextDecoder().decode(t));throw new Error("No TextDecoder or Buffer available to decode object")},C=class{constructor({maxEntries:e=1/0,maxWeight:t=1/0,weightFn:n=()=>1,defaultTTL:r=6e4,maxPoolSize:s=1e3,rejectOversized:i=!1,onEvict:a=null,onExpire:o=null,initialPoolSize:h=0,maxCleanupPerTick:u=100,eagerCleanupOnRead:l=!1}={}){this.maxEntries=e,this.maxWeight=t,this.weightFn=n,this.defaultTTL=r,this.maxPoolSize=s,this.rejectOversized=!!i,this.onEvict=typeof a=="function"?a:null,this.onExpire=typeof o=="function"?o:null,this.maxCleanupPerTick=Number.isFinite(+u)?Math.max(1,+u):100,this.eagerCleanupOnRead=!!l,this.map=new Map,this.head=null,this.tail=null,this.pool=[];for(let c=0;c<Math.min(h||0,this.maxPoolSize);c++)this.pool.push({key:null,value:null,weight:0,expiresAt:0,prev:null,next:null});this.currentWeight=0,this.hits=0,this.misses=0,this.evictions=0,this.rejected=0,this.expirations=0,this._cleanupTimer=null,this._cleanupRunning=!1,this._cleanupParams=null,this._cleanupCursor=null,this._cleanupCursorValid=!1,this._inflightPromises=new Map}_allocNode(e,t,n,r){const s=this.pool.pop()||{key:null,value:null,weight:0,expiresAt:0,prev:null,next:null};return s.key=e,s.value=t,s.weight=n||0,s.expiresAt=r||0,s.prev=null,s.next=null,s}_freeNode(e){e.key=null,e.value=null,e.weight=0,e.expiresAt=0,e.prev=null,e.next=null,this.pool.length<this.maxPoolSize&&this.pool.push(e)}_removeExpiredNode(e,t,n=!1){if(!e||!e.expiresAt||e.expiresAt>t)return!1;const r=e.key,s=e.value,i=e.next;this.map.delete(r),this.currentWeight-=e.weight||0,this._cleanupCursor===e&&(this._cleanupCursor=i),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(e);try{this.onExpire&&this.onExpire(r,s)}catch{}return this._freeNode(e),n&&this.misses++,this.expirations++,!0}_fetchValidNode(e,{ignoreExpiry:t=!1,countMiss:n=!1,allowExpired:r=!1}={}){const s=this.map.get(e);return s?!t&&s.expiresAt&&s.expiresAt<=Date.now()?r?s:(this._removeExpiredNode(s,Date.now(),n),null):s:(n&&this.misses++,null)}_refreshStaleEntry(e,t,{ttl:n,weight:r}={}){if(this._inflightPromises.has(e))return;let s;try{s=Promise.resolve().then(()=>t())}catch{return}const i=s.then(a=>{try{this.set(e,a,{ttl:n,weight:r})}catch{}return this._inflightPromises.delete(e),a},a=>{this._inflightPromises.delete(e)});this._inflightPromises.set(e,i)}_append(e){this.tail?(e.prev=this.tail,e.next=null,this.tail.next=e,this.tail=e):this.head=this.tail=e}_remove(e){const t=e.prev,n=e.next;t?t.next=n:this.head=n,n?n.prev=t:this.tail=t,e.prev=e.next=null}_moveToTail(e){this.tail!==e&&(this._remove(e),this._append(e))}_evictIfNeeded(){for(;this.map.size>this.maxEntries||this.currentWeight>this.maxWeight;){const e=this.head;if(!e)break;const t=e.next,n=e.key,r=e.value;this._cleanupCursor===e&&(this._cleanupCursor=t),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(e),this.map.delete(n),this.currentWeight-=e.weight||0,this.evictions++;try{this.onEvict&&this.onEvict(n,r,"evicted")}catch{}this._freeNode(e)}}set(e,t,{ttl:n=this.defaultTTL,weight:r=null}={}){const s=n==null||n===1/0?0:Date.now()+n;let i;if(r!=null)i=r;else{try{i=this.weightFn(t)}catch{i=0}i==null&&(i=0)}const a=Number.isFinite(+i)?Math.max(0,+i):0;if(this.rejectOversized&&Number.isFinite(this.maxWeight)&&a>this.maxWeight){this.rejected++;try{this.onEvict&&this.onEvict(e,t,"rejected-oversized")}catch{}return!1}if(this.map.has(e)){const o=this.map.get(e);this.currentWeight-=o.weight||0,o.value=t,o.weight=a,o.expiresAt=s,this.currentWeight+=o.weight||0,this._moveToTail(o)}else{const o=this._allocNode(e,t,a,s);this.map.set(e,o),this._append(o),this.currentWeight+=o.weight||0,this._evictIfNeeded()}return this}get(e){const t=this._fetchValidNode(e,{countMiss:!0});if(t)return this._moveToTail(t),this.hits++,t.value}peek(e){const t=this._fetchValidNode(e);return t?t.value:void 0}has(e,{ignoreExpiry:t=!1}={}){return!!this._fetchValidNode(e,{ignoreExpiry:t})}getOrSet(e,t,{ttl:n,weight:r,staleWhileRevalidate:s=!1}={}){const i=Date.now(),a=this._fetchValidNode(e,{countMiss:!1,allowExpired:s});if(a){if(!(a.expiresAt&&a.expiresAt<=i))return this._moveToTail(a),this.hits++,a.value;if(typeof t=="function")return this._moveToTail(a),this.hits++,this._refreshStaleEntry(e,t,{ttl:n,weight:r}),a.value;this._removeExpiredNode(a,i,!0)}else this.misses++;if(typeof t=="function"){const o=t();return o&&typeof o.then=="function"?o.then(h=>{try{this.set(e,h,{ttl:n,weight:r})}catch{}return h}):(this.set(e,o,{ttl:n,weight:r}),o)}return this.set(e,t,{ttl:n,weight:r}),t}setMany(e,{ttl:t,weight:n}={}){const r=t==null||t===1/0?0:Date.now()+t;for(const s of e){if(!s)continue;const[i,a]=s;let o;if(n!=null)o=n;else{try{o=this.weightFn(a)}catch{o=0}o==null&&(o=0)}const h=Number.isFinite(+o)?Math.max(0,+o):0;if(this.map.has(i)){const u=this.map.get(i);this.currentWeight-=u.weight||0,u.value=a,u.weight=h,u.expiresAt=r,this.currentWeight+=u.weight||0,this._moveToTail(u)}else{const u=this._allocNode(i,a,h,r);this.map.set(i,u),this._append(u),this.currentWeight+=u.weight||0}}return this._evictIfNeeded(),this}getMany(e,{ignoreExpiry:t=!1}={}){const n=new Map;for(const r of e){const s=this._fetchValidNode(r,{ignoreExpiry:t,countMiss:!0});s&&(this._moveToTail(s),this.hits++,n.set(r,s.value))}return n}touch(e,t=void 0){const n=this._fetchValidNode(e);if(!n)return!1;const r=Date.now();return t!==void 0&&(n.expiresAt=t==null||t===1/0?0:r+t),this._moveToTail(n),!0}getOrSetAsync(e,t,{ttl:n,weight:r,staleWhileRevalidate:s=!1}={}){if(typeof t!="function")return Promise.resolve(this.getOrSet(e,t,{ttl:n,weight:r}));const i=Date.now(),a=this.map.get(e);if(a){if(!(a.expiresAt&&a.expiresAt<=i))return this._moveToTail(a),this.hits++,Promise.resolve(a.value);if(s)return this._moveToTail(a),this.hits++,this._refreshStaleEntry(e,t,{ttl:n,weight:r}),Promise.resolve(a.value);this._removeExpiredNode(a,i,!1)}if(this._inflightPromises.has(e))return this._inflightPromises.get(e);let o;this.misses++;try{o=Promise.resolve().then(()=>t())}catch(u){return Promise.reject(u)}const h=o.then(u=>{try{this.set(e,u,{ttl:n,weight:r})}catch{}return this._inflightPromises.delete(e),u},u=>{throw this._inflightPromises.delete(e),u});return this._inflightPromises.set(e,h),h}hasEqual(e,t,{ignoreExpiry:n=!1,seen:r}={}){const s=this._fetchValidNode(e,{ignoreExpiry:n});if(!s)return!1;const i=s.value;return i===t||(typeof i!="object"||i===null||typeof t!="object"||t===null?i===t:T(i,t,r))}hasEqualWithSeen(e,t,n,{ignoreExpiry:r=!1}={}){return this.hasEqual(e,t,{ignoreExpiry:r,seen:n})}delete(e){const t=this.map.get(e);if(!t)return!1;const n=t.next;this.map.delete(e),this.currentWeight-=t.weight||0,this._cleanupCursor===t&&(this._cleanupCursor=n),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(t);try{this.onEvict&&this.onEvict(t.key,t.value,"deleted")}catch{}return this._freeNode(t),!0}clear(){for(let e=this.head;e;){const t=e.next;this._freeNode(e),e=t}this.head=this.tail=null,this.map.clear(),this.currentWeight=0,this._cleanupCursor=null,this._cleanupCursorValid=!1}cleanupExpired(){return this.cleanupExpiredUpTo()}cleanupExpiredUpTo(e=1/0){const t=Date.now();let n=0,r=this._cleanupCursor&&this._cleanupCursorValid?this._cleanupCursor:this.head;for(;r&&n<e;){const s=r.next;if(r.expiresAt&&r.expiresAt<=t){const i=r.key,a=r.value;this.map.delete(i),this.currentWeight-=r.weight||0,this._cleanupCursor===r&&(this._cleanupCursor=s),this._cleanupCursorValid=!!this._cleanupCursor,this._remove(r);try{this.onExpire&&this.onExpire(i,a)}catch{}this._freeNode(r),this.expirations++}r=s,n++}return this._cleanupCursor=r||this.head,this._cleanupCursorValid=!!this._cleanupCursor,n}startCleanup(e={}){let t,n;typeof e=="number"?(t=e,n=this.maxCleanupPerTick):(t=Number.isFinite(+e.interval)?+e.interval:Math.max(1e3,Math.min(this.defaultTTL||6e4,6e4)),n=Number.isFinite(+e.maxCleanupPerTick)?Math.max(1,+e.maxCleanupPerTick):this.maxCleanupPerTick),this.stopCleanup(),this._cleanupParams={interval:t,maxCleanupPerTick:n},this._cleanupTimer=setTimeout(()=>this._cleanupTick(),t)}stopCleanup(){this._cleanupTimer&&(clearTimeout(this._cleanupTimer),this._cleanupTimer=null),this._cleanupRunning=!1,this._cleanupParams=null}[Symbol.dispose](){try{this.stopCleanup()}catch{}try{this.clear()}catch{}}async[Symbol.asyncDispose](){try{this.stopCleanup()}catch{}try{this.clear()}catch{}}_cleanupTick(){if(this._cleanupTimer!=null)if(this._cleanupRunning)this._cleanupTimer=setTimeout(()=>this._cleanupTick(),this._cleanupParams.interval);else{this._cleanupRunning=!0;try{this.cleanupExpiredUpTo(this._cleanupParams.maxCleanupPerTick)}finally{this._cleanupRunning=!1}this._cleanupTimer=setTimeout(()=>this._cleanupTick(),this._cleanupParams.interval)}}get size(){return this.map.size}get hitRate(){const e=(this.hits||0)+(this.misses||0);return e?this.hits/e:0}stats(){return{size:this.size,weight:this.currentWeight,hits:this.hits,misses:this.misses,evictions:this.evictions,expirations:this.expirations,rejected:this.rejected,poolSize:this.pool.length}}resize({maxEntries:e,maxWeight:t}={}){Number.isFinite(+e)&&(this.maxEntries=Math.max(0,+e)),Number.isFinite(+t)&&(this.maxWeight=Math.max(0,+t)),this._evictIfNeeded()}*entries(e="MRU"){if(e==="MRU")for(let t=this.tail;t;t=t.prev)yield[t.key,t.value];else for(let t=this.head;t;t=t.next)yield[t.key,t.value]}[Symbol.iterator](){return this.entries("MRU")}*keys(e="MRU"){for(const[t]of this.entries(e))yield t}*values(e="MRU"){for(const[,t]of this.entries(e))yield t}};function T(e,t,n=void 0){if(e===t)return!0;if(e==null||t==null||typeof e!="object"||typeof t!="object")return e===t;n||(n=new WeakMap);let r=n.get(e);if(r&&r.has(t))return!0;if(r||(r=new WeakSet,n.set(e,r)),r.add(t),Object.getPrototypeOf(e)!==Object.getPrototypeOf(t))return!1;if(typeof Uint8Array<"u"&&e instanceof Uint8Array){if(!(t instanceof Uint8Array)||e.length!==t.length)return!1;for(let a=0;a<e.length;a++)if(e[a]!==t[a])return!1;return!0}if(Array.isArray(e)){if(!Array.isArray(t)||e.length!==t.length)return!1;for(let a=0;a<e.length;a++)if(!T(e[a],t[a],n))return!1;return!0}if(ArrayBuffer.isView(e)){if(!ArrayBuffer.isView(t)||e.byteLength!==t.byteLength)return!1;const a=new Uint8Array(e.buffer,e.byteOffset||0,e.byteLength),o=new Uint8Array(t.buffer,t.byteOffset||0,t.byteLength);for(let h=0;h<a.length;h++)if(a[h]!==o[h])return!1;return!0}if(e instanceof ArrayBuffer){if(!(t instanceof ArrayBuffer)||e.byteLength!==t.byteLength)return!1;const a=new Uint8Array(e),o=new Uint8Array(t);for(let h=0;h<a.length;h++)if(a[h]!==o[h])return!1;return!0}if(e instanceof Date)return t instanceof Date&&e.getTime()===t.getTime();if(e instanceof RegExp)return t instanceof RegExp&&e.toString()===t.toString();if(e instanceof Map){if(!(t instanceof Map)||e.size!==t.size)return!1;for(const[a,o]of e)if(!t.has(a)||!T(o,t.get(a),n))return!1;return!0}if(e instanceof Set){if(!(t instanceof Set)||e.size!==t.size)return!1;let a=!0;for(const o of e)if(o!==null&&typeof o=="object"){a=!1;break}if(a){for(const o of e)if(!t.has(o))return!1;return!0}for(const o of e){let h=!1;for(const u of t)if(T(o,u,n)){h=!0;break}if(!h)return!1}return!0}const s=Object.keys(e),i=Object.keys(t);if(s.length!==i.length)return!1;for(let a=0;a<s.length;a++){const o=s[a];if(!Object.prototype.hasOwnProperty.call(t,o)||!T(e[o],t[o],n))return!1}return!0}var E=null;if(typeof process<"u"&&process.hrtime&&typeof process.hrtime.bigint=="function")try{const e=Number(process.hrtime.bigint()/1000000n);E=Date.now()-e}catch{E=null}var m=()=>{const e=Date.now();if(typeof performance<"u"&&typeof performance.now=="function"&&typeof performance.timeOrigin=="number")try{const t=performance.timeOrigin+performance.now();return Math.abs(t-e)<1e3?t:e}catch{}if(E!=null)try{const t=Number(process.hrtime.bigint()/1000000n)+E;return Math.abs(t-e)<1e3?t:e}catch{return e}return e},M=class{constructor(e=16){const t=Math.max(2,Number(e)||16);for(this._capacity=1;this._capacity<t;)this._capacity<<=1;this._mask=this._capacity-1,this._buffer=new Array(this._capacity),this._head=0,this._tail=0,this._size=0}push(e){return this._size===this._capacity&&this._grow(),this._buffer[this._tail]=e,this._tail=this._tail+1&this._mask,this._size++,this._size}shift(){if(this._size===0)return;const e=this._buffer[this._head];return this._buffer[this._head]=void 0,this._head=this._head+1&this._mask,this._size--,e}peek(){return this._size===0?void 0:this._buffer[this._head]}clear(){if(this._size===0)return;let e=this._head;for(let t=0;t<this._size;t++)this._buffer[e]=void 0,e=e+1&this._mask;this._head=this._tail=0,this._size=0}get length(){return this._size}get capacity(){return this._capacity}get isEmpty(){return this._size===0}*[Symbol.iterator](){let e=this._head;for(let t=0;t<this._size;t++)yield this._buffer[e+t&this._mask]}values(){return this[Symbol.iterator]()}*keys(){for(let e=0;e<this._size;e++)yield e}*entries(){for(let e=0;e<this._size;e++)yield[e,this._buffer[this._head+e&this._mask]]}*drain(){for(;this._size>0;)yield this.shift()}toArray(){const e=new Array(this._size);for(let t=0;t<this._size;t++)e[t]=this._buffer[this._head+t&this._mask];return e}_grow(){const e=this._buffer,t=this._capacity<<1,n=new Array(t);for(let r=0;r<this._size;r++)n[r]=e[this._head+r&this._mask];this._buffer=n,this._capacity=t,this._mask=t-1,this._head=0,this._tail=this._size&this._mask}pushMany(e){if(!Array.isArray(e)||e.length===0)return this._size;const t=this._size+e.length;for(;this._capacity<t;)this._grow();const n=Math.min(e.length,this._capacity-this._tail);for(let s=0;s<n;s++)this._buffer[this._tail+s]=e[s];this._tail=this._tail+n&this._mask;let r=n;for(;r<e.length;){const s=Math.min(e.length-r,this._capacity-this._tail);for(let i=0;i<s;i++)this._buffer[this._tail+i]=e[r+i];this._tail=this._tail+s&this._mask,r+=s}return this._size=t,this._size}unshiftMany(e){if(!Array.isArray(e)||e.length===0)return this._size;const t=this._size+e.length;for(;this._capacity<t;)this._grow();let n=this._head-e.length&this._mask;for(let r=0;r<e.length;r++)this._buffer[n+r&this._mask]=e[r];return this._head=n,this._size=t,this._size}};function B(e){return e&&e.error?`${e.code||"ERR"}: ${e.message||""}`:String(e)}var O=class{constructor(e=0,t={}){this._debugLevel=0,this._counters=Object.create(null),this._format=t&&t.format||"text",this.name=t&&t.name||null,this._formatter=t&&typeof t.formatter=="function"?t.formatter:null,this._output=t&&typeof t.output=="function"?t.output:null,this.setDebugLevel(e)}setDebugLevel(e){let t=NaN;typeof e=="number"?t=e:typeof e=="string"||typeof e=="boolean"?t=Number(e):(e instanceof Number||e instanceof String||e instanceof Boolean)&&(t=Number(e.valueOf())),this._debugLevel=Number.isFinite(t)&&t>=0?Math.max(0,Math.min(3,Math.floor(t))):0}getDebugLevel(){return this._debugLevel}isDebugLevel(e=1){return Number(this._debugLevel)>=Number(e||1)}isDebug(){return this.isDebugLevel(1)}_resolveLogArgs(e){return e.map(t=>{if(typeof t=="function")try{return t()}catch(n){return n}return t})}_emit(e,t,n,r,s={}){if(!this.isDebugLevel(e))return;const i=this._resolveLogArgs(r);let a={level:n,msg:s.msgArray?i:i.length===1?i[0]:i,ts:m(),format:this._format};if(this.name&&(a.name=this.name),this._formatter)try{const o=this._formatter(a);if(o!=null){if(typeof o=="string"){if(this._output){try{this._output(o)}catch{}return}return void(console&&console[t])}a=o}}catch{}if(this._output)try{this._output(a)}catch{}else if(console&&typeof console[t]=="function"&&this._format==="json")try{typeof a=="string"||JSON.stringify(a)}catch{}}error(...e){const t=e.map(n=>{try{if(n&&n.error)return B(n);if(n instanceof Error||n&&typeof n=="object")return B((function(r,s="ERR_ITEM"){return r&&typeof r=="object"?{error:!0,code:r.code||s,message:r.message,stack:r.stack}:{error:!0,code:s,message:r?String(r):void 0,stack:void 0}})(n))}catch{}return n});this._emit(1,"error","error",t)}warn(...e){this._emit(2,"warn","warn",e)}info(...e){this._emit(3,"info","info",e)}log(...e){this._emit(3,"log","log",e)}debug(...e){this._emit(3,"debug","debug",e)}table(...e){if(!(!this.isDebugLevel(3)||!console)){if(this._format==="json")return void this._emit(3,"log","table",e,{msgArray:!0});this._resolveLogArgs(e)}}incrementCounter(e){if(!this.isDebug())return;const t=String(e||"");t&&(this._counters[t]=(this._counters[t]||0)+1)}getDebugCounters(){return Object.assign({},this._counters)}resetDebugCounters(){this._counters=Object.create(null)}},G=Symbol("PowerSubscriberSet.original"),k=class{constructor(e={}){const{weak:t=!1,maxListeners:n=0}=e||{};this._weak=!!t,this._maxListeners=Number.isFinite(Number(n))?Math.max(0,Math.floor(Number(n))):0,this._listeners=new Set,this._onceMap=new WeakMap,this._finalization=null,this._weak&&typeof WeakRef<"u"&&typeof FinalizationRegistry<"u"&&(this._finalization=new FinalizationRegistry(r=>{this._listeners.delete(r.ref)}))}get size(){return this._cleanup(),this._listeners.size}add(e){if(typeof e!="function"){if(!this._weak||!e||typeof e.deref!="function")throw new TypeError("listener must be a function");if(this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);return this._listeners.add(e),()=>this.delete(e)}if(this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);const t=this._makeEntry(e);return this._listeners.add(t),()=>this.delete(e)}addOnce(e){if(typeof e!="function")throw new TypeError("listener must be a function");const t=(...r)=>{try{e(...r)}finally{this.delete(e)}};try{t[G]=e}catch{}if(this._onceMap.set(e,t),this._maxListeners>0&&this.size+1>this._maxListeners)throw new Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);const n=this._makeEntry(t);return this._listeners.add(n),()=>this.delete(e)}delete(e){let t=e;const n=this._onceMap.get(e);n&&(t=n,this._onceMap.delete(e));for(const r of this._listeners){const s=this._deref(r);if(s){if(s===t)return this._listeners.delete(r),this._finalization&&typeof r.deref=="function"&&this._finalization.unregister(r),!0}else this._listeners.delete(r)}return!1}forEach(e){for(const t of this._listeners){const n=this._deref(t);n?e(n):this._listeners.delete(t)}}clear(){this._listeners.clear(),this._onceMap=new WeakMap}values(){this._cleanup();const e=[];for(const t of this._listeners){const n=this._deref(t);n&&e.push(n)}return e}[Symbol.iterator](){return this.values()[Symbol.iterator]()}_cleanup(){if(this._weak&&typeof WeakRef<"u")for(const e of this._listeners)e&&typeof e.deref=="function"&&!e.deref()&&this._listeners.delete(e)}_makeEntry(e){if(this._weak&&typeof WeakRef<"u"){const t=new WeakRef(e);if(this._finalization)try{this._finalization.register(e,{ref:t},t)}catch{}return t}return e}_deref(e){return e&&typeof e.deref=="function"?e.deref():e}};function K(e){if(e)if(typeof e.cleanup!="function")if(typeof e._cleanup!="function"){if(typeof e[Symbol.iterator]=="function"&&typeof e.delete=="function")for(const t of e)(t&&typeof t.deref=="function"?t.deref():t)||e.delete(t)}else try{e._cleanup()}catch{}else try{e.cleanup()}catch{}}var q=class{constructor(e={}){this._listeners=new Map,this._maxListeners=Number.isFinite(Number(e.maxListeners))?Math.max(0,Number(e.maxListeners)):0,this._weak=!!e.weak,this._fr=null,this._finalizationRefs=new WeakMap}_ensureFinalizationRegistry(){return this._weak&&typeof FinalizationRegistry<"u"?(this._fr||(this._fr=new FinalizationRegistry(e=>{try{const{event:t,ref:n}=e,r=this._listeners.get(t);r&&typeof r.delete=="function"&&r.delete(n.deref?n.deref():n)}catch{}})),this._fr):null}cleanup(){if(this._weak)for(const[e,t]of this._listeners)K(t),t.size===0&&this._listeners.delete(e)}_getBucket(e){let t=this._listeners.get(e);if(!t)return null;if(t instanceof k)return t;if(t&&typeof t[Symbol.iterator]=="function"){const n=new k({maxListeners:this._maxListeners,weak:this._weak});for(const r of t){const s=r&&typeof r.deref=="function"?r.deref():r;s&&n.add(s)}return this._listeners.set(e,n),n}return null}_registerWeakListener(e,t){const n=this._ensureFinalizationRegistry();if(!n||typeof WeakRef>"u")return null;const r=new WeakRef(e);try{n.register(e,{event:t,ref:r},r),this._finalizationRefs.set(e,r)}catch{return null}return r}_unregisterWeakListener(e){if(!this._fr||!this._finalizationRefs.has(e))return;const t=this._finalizationRefs.get(e);try{this._fr.unregister(t)}catch{}this._finalizationRefs.delete(e)}on(e,t){if(typeof t!="function")throw new TypeError("listener must be a function");let n=this._getBucket(e);n||(n=new k({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,n));const r=n.add(t);return this._registerWeakListener(t,e)?()=>{r(),this._unregisterWeakListener(t)}:r}once(e,t){if(typeof t!="function")throw new TypeError("listener must be a function");let n=this._getBucket(e);n||(n=new k({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,n));const r=n.addOnce(t);return this._registerWeakListener(t,e)?()=>{r(),this._unregisterWeakListener(t)}:r}off(e,t){const n=this._getBucket(e);n&&(n.delete(t),this._unregisterWeakListener(t),n.size===0&&this._listeners.delete(e))}emit(e,t){const n=this._listeners.get(e);if(!n||n.size===0)return!1;if(n instanceof k){let s=!1;return n.forEach(i=>{s=!0;try{i(t)}catch{}}),n.size===0&&this._listeners.delete(e),s}const r=n.size>0;for(const s of n){const i=s&&typeof s.deref=="function"?s.deref():s;if(i)try{i(t)}catch{}else n.delete(s)}return n.size===0&&this._listeners.delete(e),r}async emitAsync(e,t,{concurrency:n=1/0}={}){const r=this.listeners(e);if(r.length===0)return!1;const s=Number.isFinite(+n)&&+n>0?Math.max(1,Math.floor(+n)):1/0,i=async h=>{try{await h(t)}catch{}};if(!Number.isFinite(s)||s>=r.length)return await Promise.all(r.map(i)),!0;let a=0;const o=Array.from({length:s},async()=>{for(;a<r.length;){const h=r[a++];h&&await i(h)}});return await Promise.all(o),!0}listeners(e){const t=this._listeners.get(e);return t?t instanceof k?t.values():Array.from(t).map(n=>n&&typeof n.deref=="function"?n.deref():n).filter(Boolean):[]}clear(e){e!==void 0?this._listeners.delete(e):this._listeners.clear()}},V=class{constructor(e,t,n){this._underlying=e,this._logger=t,this._pool=n,this.onmessage=null,this.onerror=null,this.onmessageerror=null}postMessage(e,t){let n=e,r=t;if(!(e===null||typeof e!="object"||ArrayBuffer.isView(e)||e instanceof ArrayBuffer))try{const s=this._pool._encodeForTransfer(e);if(!r||Array.isArray(r)&&r.length===0)r=[s.buffer];else{let i=!1;if(Array.isArray(r)){for(let a of r)if(a===s.buffer){i=!0;break}i||(r=[...r,s.buffer])}else if(r.length===0)r=[s.buffer];else{const a=[];for(let o of r)a.push(o),o===s.buffer&&(i=!0);i||a.push(s.buffer),r=a}}n=s}catch{r=t,n=e}!r&&(n instanceof Uint8Array||ArrayBuffer.isView(n))&&(r=[n.buffer]);try{r&&r.length?this._underlying.postMessage(n,r):this._underlying.postMessage(n)}catch(s){throw this._logger.error(s,"Failed to postMessage to underlying worker"),s}}addEventListener(...e){return this._underlying.addEventListener(...e)}removeEventListener(...e){return this._underlying.removeEventListener(...e)}terminate(){typeof this._underlying.terminate=="function"&&this._underlying.terminate()}},$=class extends Error{constructor(e="PowerPool has been shut down"){super(e),this.name="PowerPoolShutdownError"}},U=class{constructor(e,t={}){const n=typeof navigator<"u"&&navigator.hardwareConcurrency||2,{size:r=Math.min(n,2),minSize:s=2,maxSize:i=Math.max(r,n),workerOptions:a={},maxTasksPerWorker:o=1/0,idleTimeout:h=6e4,taskQueue:u=!0,queuePolicy:l="enqueue",lazy:c=!0}=t;this._workerSource=e,this._workerOptions=a,this._maxTasksPerWorker=o,this.minSize=Math.max(0,s),this.maxSize=Math.max(this.minSize,i),this.idleTimeout=Math.max(0,h),this.taskQueueEnabled=!!u,this._queuePolicy=["enqueue","drop-oldest","drop-newest","reject"].includes(l)?l:"enqueue",this._createdAt=m(),this._totalWorkersCreated=0,this._totalTasksCompleted=0,this._taskDurationsWelfordCount=0,this._taskDurationsWelfordMean=0,this._taskDurationsWelfordM2=0,this._taskDurationsMin=Number.POSITIVE_INFINITY,this._taskDurationsMax=Number.NEGATIVE_INFINITY,this._ewmaLatency=null,this._autoScale=null,this._autoScaleInterval=null,this._lastAutoScaleAt=null,this._terminatedWorkerTaskCountsTotal=0,this._terminatedWorkerTaskCountsCount=0,this.workers=[],this.queue=new M,this._bus=new q({maxListeners:t&&(t.listenerMaxListeners??t.maxListeners),weak:t&&!!t.weakListeners}),this._queueHighThreshold=Number.isFinite(Number(t&&t.queueHighThreshold))?Math.max(0,Math.floor(Number(t.queueHighThreshold))):1/0,this._queueHighCrossed=!1,this._onmessage=null,this._onerror=null,this._onidle=null,this._onresize=null,this._nextIndex=0,this._nextWorkerId=0,this._activeTasks=0,this._isIdle=!0,this._logger=new O(t&&typeof t.debugLevel=="number"?t.debugLevel:1,{name:"powerPool"}),this._pendingResponses=new Map,this._underlyingToWorkerObj=new Map;const p=c?Math.min(this.minSize,this.maxSize):Math.min(Math.max(r,this.minSize),this.maxSize);for(let f=0;f<p;f++)this._addWorkerInstance();if(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2))),this._encodeCache=new Map,this._encodeCacheLimit=Math.max(16,t&&t.encodeCacheLimit?t.encodeCacheLimit:64),this._encodeCacheByteLimit=Number.isFinite(t&&Number(t.encodeCacheByteLimit))?Math.max(0,Number(t.encodeCacheByteLimit)):1/0,this._encodeCacheBytes=0,t&&t.autoScale){const f=typeof t.autoScale=="object"?t.autoScale:{},g=Number.isFinite(Number(f.intervalMs))?Math.max(100,Math.floor(f.intervalMs)):1e3,d=Number.isFinite(Number(f.targetMs))?Math.max(1,Number(f.targetMs)):50,y=Number.isFinite(Number(f.alpha))?Math.max(0,Math.min(1,Number(f.alpha))):.2,_=Number.isFinite(Number(f.cooldownMs))?Math.max(0,Math.floor(f.cooldownMs)):5e3;this._autoScale={enabled:!0,intervalMs:g,targetMs:d,alpha:y,cooldownMs:_,hysteresis:Number.isFinite(Number(f.hysteresis))?Math.max(0,Math.min(1,Number(f.hysteresis))):.2,stepUp:Number.isFinite(Number(f.stepUp))?Math.max(1,Math.floor(Number(f.stepUp))):1,stepDown:Number.isFinite(Number(f.stepDown))?Math.max(1,Math.floor(Number(f.stepDown))):1,backoffFactor:Number.isFinite(Number(f.backoffFactor))?Math.max(1,Number(f.backoffFactor)):1,backoffMaxMultiplier:Number.isFinite(Number(f.backoffMaxMultiplier))?Math.max(1,Number(f.backoffMaxMultiplier)):8,backoffResetMs:Number.isFinite(Number(f.backoffResetMs))?Math.max(0,Math.floor(Number(f.backoffResetMs))):4*_},this._autoScaleBackoffMultiplier=1;try{this._autoScaleInterval=setInterval(()=>this._autoScaleTick(),g)}catch{}}}_debugLog(e,t){try{this&&this._logger&&typeof this._logger.debug=="function"&&(e?this._logger.debug(e,t||"swallowed error"):this._logger.debug(t||"swallowed error"))}catch{}}_ensureReaper(){try{this._reaperInterval||(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(1e3,Math.floor(this.idleTimeout/2))))}catch{}}_clearLifecycleIntervals(){try{this._reaperInterval&&(clearInterval(this._reaperInterval),this._reaperInterval=null)}catch{}try{this._autoScaleInterval&&(clearInterval(this._autoScaleInterval),this._autoScaleInterval=null)}catch{}}shutdown(){this._clearLifecycleIntervals();try{for(const[e]of this._pendingResponses)try{this._cleanupPendingResponse(e,{rejectWith:new $("pool:shutdown")})}catch(t){this._debugLog&&this._debugLog(t,"shutdown: cleanup pending response")}}catch(e){this._debugLog&&this._debugLog(e,"shutdown: iterate pending responses")}try{for(const e of this.workers)try{e.worker.terminate()}catch(t){this._debugLog&&this._debugLog(t,"shutdown: terminate worker")}}catch(e){this._debugLog&&this._debugLog(e,"shutdown: terminate workers loop")}try{this._underlyingToWorkerObj&&this._underlyingToWorkerObj.clear()}catch{}try{const e=this.workers.map(t=>t&&t.id).filter(t=>t!=null);e&&e.length&&this._bus.emit("pool:scale",{action:"remove",terminated:e,count:e.length})}catch(e){this._debugLog&&this._debugLog(e,"shutdown: pool scale emit error")}this.workers=[],this.queue=new M,this._activeTasks=0}_encodeForTransfer(e){try{const t=JSON.stringify(e);if(typeof t=="string"&&t.length>2048)return P(e);const n=this._encodeCache.get(t);if(n){try{this._encodeCache.delete(t),this._encodeCache.set(t,n)}catch{}return n}const r=P(e),s=r&&r.byteLength||0,i=()=>this._encodeCache.size>=this._encodeCacheLimit||this._encodeCacheByteLimit!==1/0&&this._encodeCacheBytes+s>this._encodeCacheByteLimit;for(;i();){const a=this._encodeCache.keys().next().value;if(!a)break;try{const o=this._encodeCache.get(a);o&&o.byteLength&&(this._encodeCacheBytes=Math.max(0,this._encodeCacheBytes-o.byteLength))}catch{}this._encodeCache.delete(a)}return this._encodeCache.set(t,r),r&&r.byteLength&&(this._encodeCacheBytes+=r.byteLength),r}catch{return P(e)}}prepareBuffer(e,t={}){const{clone:n=!0}=t,r=this._encodeForTransfer(e);return n?r.slice():r}prepareBuffers(e,t={}){if(!Array.isArray(e))throw new Error("prepareBuffers expects an array");const{clone:n=!0,zeroCopy:r=!1}=t,s=new Array(e.length);for(let i=0;i<e.length;i++){const a=e[i]&&typeof e[i]=="object"&&"message"in e[i]?e[i]:{message:e[i]},o=a.message,h=a.transfer;if(h)s[i]={message:o,transfer:h};else{if(!(o===null||typeof o!="object"||ArrayBuffer.isView(o)||o instanceof ArrayBuffer)){if(r){s[i]={message:o,transfer:void 0};continue}try{const u=this._encodeForTransfer(o);if(n){const l=u.slice();s[i]={message:l,transfer:[l.buffer]}}else s[i]={message:u,transfer:void 0};continue}catch{s[i]={message:o,transfer:void 0};continue}}o instanceof ArrayBuffer||ArrayBuffer.isView(o)?s[i]={message:o,transfer:[o instanceof ArrayBuffer?o:o.buffer]}:s[i]={message:o,transfer:void 0}}}return s}_prepareForTransfer(e,t,n){const r=n&&!!n.zeroCopy;if(!(e===null||typeof e!="object"||ArrayBuffer.isView(e)||e instanceof ArrayBuffer)){if(r)return{message:e,transfer:t};try{const s=this._encodeForTransfer(e).slice();let i=t;if(!i||Array.isArray(i)&&i.length===0)i=[s.buffer];else if(Array.isArray(i)){let a=!1;for(const o of i)if(o===s.buffer){a=!0;break}a||(i=[...i,s.buffer])}else if(i.length===0)i=[s.buffer];else{const a=[];let o=!1;for(const h of i)a.push(h),h===s.buffer&&(o=!0);o||a.push(s.buffer),i=a}return{message:s,transfer:i}}catch{return{message:e,transfer:t}}}return e instanceof Uint8Array||ArrayBuffer.isView(e)||e instanceof ArrayBuffer?{message:e,transfer:[e.buffer||e]}:{message:e,transfer:t}}_decrementActiveTasks(e=1){try{const t=Number.isFinite(Number(e))?Math.max(0,Math.floor(Number(e))):1;this._activeTasks=Math.max(0,this._activeTasks-t)}catch{this._activeTasks=0}}resize(e){let t=this.minSize,n=this.maxSize;if(e!=null&&typeof e=="object")Number.isFinite(e.minSize)&&(t=Math.max(0,Math.floor(e.minSize))),Number.isFinite(e.maxSize)&&(n=Math.max(t,Math.floor(e.maxSize)));else{const i=Number(e);if(!Number.isFinite(i))return;n=Math.max(t,Math.floor(i))}this.minSize=Math.max(0,t),this.maxSize=Math.max(this.minSize,n);let r=0;for(;this.workers.length<this.minSize&&this.workers.length<this.maxSize;)this._addWorkerInstance(),r++;const s=[];for(;this.workers.length>this.maxSize;){const i=this.workers.pop();if(i){this._decrementActiveTasks(i.tasks||0);try{i.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(i),this._terminatedWorkerTaskCountsTotal+=i.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1,s.push(i.id)}}if(s.length||r){const i={data:{type:"pool:resize",terminated:s,added:r,minSize:this.minSize,maxSize:this.maxSize}};if(this._onresize)try{this._onresize(i)}catch(a){this._logger.error(a,"Pool onresize handler error")}try{this._bus.emit("resize",i)}catch(a){this._logger.error(a,"pool resize listener error")}try{this._bus.emit("pool:scale",{added:r,terminated:s,minSize:this.minSize,maxSize:this.maxSize})}catch(a){this._logger.error(a,"pool scale resize listener error")}}this._updateIdleState()}_createWorkerInstance(){if(typeof this._workerSource=="function"){const e=this._workerSource;if(e.prototype===void 0)return e();try{return new e}catch(t){const n=String(t&&t.message);if(t instanceof TypeError&&/not a constructor|cannot be invoked without\s*'new'|Class constructor|not constructable/i.test(n))return e();throw t}}if(typeof this._workerSource=="string"){let e;try{e=new Function("try { return import.meta && import.meta.url } catch (e) { return undefined }")()}catch{e=void 0}if(!e&&typeof document<"u"){const t=document.currentScript;t&&t.src&&(e=t.src)}!e&&typeof location<"u"&&location.href&&(e=location.href);try{if(e)return new Worker(new URL(this._workerSource,e),this._workerOptions)}catch{}return new Worker(this._workerSource,this._workerOptions)}throw new Error("Invalid workerSource: expected Worker factory or relative path string")}_deleteWorkerUnderlyingMapping(e){try{const t=e&&e.worker&&e.worker._underlying;t&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(t)}catch{}}_addWorkerInstance(e){e==null&&(e=this._nextWorkerId++);const t=this._createWorkerInstance(),n=new V(t,this._logger,this),r={id:e,worker:n,tasks:0,lastActive:m(),latencyEwma:null,_startTimes:new M,completedTasks:0};this.workers.push(r),this._totalWorkersCreated++;try{this._bus.emit("pool:scale",{action:"add",id:r.id,minSize:this.minSize,maxSize:this.maxSize})}catch(o){this._logger.error(o,"pool scale add listener error")}try{this._underlyingToWorkerObj.set(t,r)}catch{}n.onmessage=o=>{const h=m();r.tasks=Math.max(0,r.tasks-1),this._decrementActiveTasks(1),r.lastActive=h;try{const u=o&&o.data;if(u&&typeof u=="object"&&u.correlationId!=null){const l=String(u.correlationId),c=Object.prototype.hasOwnProperty.call(u,"response")?u.response:u;this._cleanupPendingResponse(l,{resolveWith:c})}}catch(u){this._debugLog&&this._debugLog(u,"worker.onmessage: resolve pending response")}try{const u=r._startTimes&&r._startTimes.length?r._startTimes.shift():null;let l=null;try{const c=o&&o.data;if(c&&typeof c.duration=="number"&&Number.isFinite(c.duration)?l=Math.max(0,Number(c.duration)):u!=null&&(l=Math.max(0,h-u)),l!=null){const p=this._autoScale&&this._autoScale.alpha||.2;r.latencyEwma==null?r.latencyEwma=l:r.latencyEwma=p*l+(1-p)*r.latencyEwma,this._ewmaLatency==null?this._ewmaLatency=l:this._ewmaLatency=p*l+(1-p)*this._ewmaLatency,this._totalTasksCompleted=(this._totalTasksCompleted||0)+1,r.completedTasks=(r.completedTasks||0)+1;const f=1;this._taskDurationsWelfordCount=this._taskDurationsWelfordCount+f;const g=l-this._taskDurationsWelfordMean;this._taskDurationsWelfordMean+=g*f/this._taskDurationsWelfordCount;const d=l-this._taskDurationsWelfordMean;this._taskDurationsWelfordM2+=g*d,l<this._taskDurationsMin&&(this._taskDurationsMin=l),l>this._taskDurationsMax&&(this._taskDurationsMax=l)}}catch(c){this._debugLog&&this._debugLog(c,"worker.onmessage: latency tracking inner")}}catch(u){this._debugLog&&this._debugLog(u,"worker.onmessage: latency tracking outer")}if(!this._queuePaused&&this.queue.length>0&&r.tasks<this._maxTasksPerWorker){const u=this.queue.shift();try{const l=m();u.transfer?n.postMessage(u.message,u.transfer):n.postMessage(u.message),r._startTimes.push(l),r.tasks++,this._activeTasks++}catch(l){this._debugLog&&this._debugLog(l,"dispatch queued message to worker failed"),this._logger.error(l,"Failed to dispatch queued message to worker")}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1)}if(this._onmessage)try{this._onmessage(o)}catch(u){this._logger.error(u,"Pool onmessage handler error")}try{this._bus.emit("message",o)}catch(u){this._logger.error(u,"pool listener error")}this._updateIdleState()};const s=o=>{let h=o&&o.data!==void 0?o.data:o,u=h;if(h&&(h instanceof ArrayBuffer||ArrayBuffer.isView(h)))try{u=L(h)}catch(c){try{a(c)}catch{}u=h}const l={data:u,originalEvent:o};if(typeof n.onmessage=="function")try{n.onmessage(l)}catch(c){this._logger.error(c,"worker wrapper onmessage error")}},i=o=>{if(typeof n.onerror=="function")try{n.onerror(o)}catch(h){this._logger.error(h,"worker wrapper onerror error")}try{this._bus.emit("error",o)}catch(h){this._logger.error(h,"pool error listener error")}},a=o=>{if(typeof n.onmessageerror=="function")try{n.onmessageerror(o)}catch(h){this._logger.error(h,"worker wrapper onmessageerror error")}try{this._bus.emit("messageerror",o)}catch(h){this._logger.error(h,"pool messageerror listener error")}};if(typeof t.addEventListener=="function"){try{t.addEventListener("message",s)}catch(o){this._debugLog&&this._debugLog(o,"attach addEventListener message")}try{t.addEventListener("error",i)}catch(o){this._debugLog&&this._debugLog(o,"attach addEventListener error")}try{t.addEventListener("messageerror",a)}catch(o){this._debugLog&&this._debugLog(o,"attach addEventListener messageerror")}}else if(typeof t.on=="function"){try{t.on("message",s)}catch(o){this._debugLog&&this._debugLog(o,"attach underlying.on message")}try{t.on("error",i)}catch(o){this._debugLog&&this._debugLog(o,"attach underlying.on error")}try{t.on("messageerror",a)}catch(o){this._debugLog&&this._debugLog(o,"attach underlying.on messageerror")}}else{try{t.onmessage=s}catch(o){this._debugLog&&this._debugLog(o,"assign underlying.onmessage")}try{t.onerror=i}catch(o){this._debugLog&&this._debugLog(o,"assign underlying.onerror")}try{t.onmessageerror=a}catch(o){this._debugLog&&this._debugLog(o,"assign underlying.onmessageerror")}}return r}_findLeastLoadedWorker(){if(!this.workers.length)return null;let e=null,t=1/0,n=Number.POSITIVE_INFINITY;for(let r=0;r<this.workers.length;r++){const s=this.workers[r],i=s.latencyEwma!=null?s.latencyEwma:Number.POSITIVE_INFINITY;(s.tasks<t||s.tasks===t&&i<n)&&(e=s,t=s.tasks,n=i)}return e}_handleUnderlyingMessage(e,t){const n=this._underlyingToWorkerObj.get(e);if(!n)return;const r=n.worker;let s=t&&t.data!==void 0?t.data:t,i=s;if(s&&(s instanceof ArrayBuffer||ArrayBuffer.isView(s)))try{i=L(s)}catch(o){try{this._handleUnderlyingMessageError(e,o)}catch{}i=s}const a={data:i,originalEvent:t};if(typeof r.onmessage=="function")try{r.onmessage(a)}catch(o){this._logger.error(o,"worker wrapper onmessage error")}}_handleUnderlyingError(e,t){const n=this._underlyingToWorkerObj.get(e);if(!n)return;const r=n.worker;if(typeof r.onerror=="function")try{r.onerror(t)}catch(s){this._logger.error(s,"worker wrapper onerror error")}try{this._bus.emit("error",t)}catch(s){this._logger.error(s,"pool error listener error")}}_handleUnderlyingMessageError(e,t){const n=this._underlyingToWorkerObj.get(e);if(!n)return;const r=n.worker;if(typeof r.onmessageerror=="function")try{r.onmessageerror(t)}catch(s){this._logger.error(s,"worker wrapper onmessageerror error")}try{this._bus.emit("messageerror",t)}catch(s){this._logger.error(s,"pool messageerror listener error")}}postMessage(e,t,n){const r=(n=n||void 0)&&n.workerId!=null?n.workerId:null,s=r!=null?this.workers.find(l=>l.id===r):this._findLeastLoadedWorker(),i=!!(n&&(n.awaitResponse||n.correlationId!=null));let a,o;if(i){if(a=n.correlationId!=null?String(n.correlationId):this._generateCorrelationId(),e===null||typeof e!="object"||ArrayBuffer.isView(e)||e instanceof ArrayBuffer)throw new Error("postMessage awaitResponse requires a plain-object message");e=Object.assign({},e,{correlationId:a}),o=new Promise((l,c)=>{const p={resolve:l,reject:c,timer:null},f=a!=null?String(a):a;n&&n.timeout&&(p.timer=setTimeout(()=>{try{this._cleanupPendingResponse(f,{rejectWith:new Error("postMessage response timeout")})}catch{try{c(new Error("postMessage response timeout"))}catch{}}},n.timeout)),this._pendingResponses.set(f,p)}),a=a!=null?String(a):a}if(s&&s.tasks<this._maxTasksPerWorker)try{const l=m(),c=this._prepareForTransfer(e,t,n);return c.transfer&&c.transfer.length?s.worker.postMessage(c.message,c.transfer):s.worker.postMessage(c.message),s._startTimes&&typeof s._startTimes.push=="function"&&s._startTimes.push(l),s.tasks++,this._activeTasks++,s.lastActive=l,this._updateIdleState(),!i||o}catch(l){if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:l})}catch{}return this._logger.error(l,"Failed to postMessage to worker"),o}return this._logger.error(l,"Failed to postMessage to worker"),!1}if(r!=null&&(!s||s.tasks>=this._maxTasksPerWorker)){if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:new Error("targeted worker unavailable")})}catch{}return o}return!1}if(r==null&&this.workers.length<this.maxSize){const l=this._addWorkerInstance();try{const c=m(),p=this._prepareForTransfer(e,t,n);return p.transfer&&p.transfer.length?l.worker.postMessage(p.message,p.transfer):l.worker.postMessage(p.message),l._startTimes&&typeof l._startTimes.push=="function"&&l._startTimes.push(c),l.tasks++,this._activeTasks++,l.lastActive=c,this._updateIdleState(),!i||o}catch(c){if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:c})}catch{}return this._logger.error(c,"Failed to postMessage to new worker"),o}return this._logger.error(c,"Failed to postMessage to new worker"),!1}}if(this.taskQueueEnabled){const l=this._prepareForTransfer(e,t,n),c=this._queuePolicy;if(c==="reject")return!(!i||!a)&&(this._cleanupPendingResponse(a,{rejectWith:new Error("postMessage rejected by queue policy")}),o);if(c==="drop-newest"&&this.queue.length>0)return!(!i||!a)&&(this._cleanupPendingResponse(a,{rejectWith:new Error("postMessage rejected by queue policy")}),o);if(c==="drop-oldest"&&this.queue.length>0){const f=this.queue.shift();f&&f.correlationId!=null&&this._cleanupPendingResponse(f.correlationId,{rejectWith:new Error("postMessage queued task dropped by policy")})}const p={message:l.message,transfer:l.transfer};i&&a&&(p.correlationId=a),this.queue.push(p);try{if(Number.isFinite(this._queueHighThreshold)&&this.queue.length>this._queueHighThreshold&&!this._queueHighCrossed){this._queueHighCrossed=!0;try{this._bus.emit("pool:queue:high",{length:this.queue.length,threshold:this._queueHighThreshold})}catch(f){this._logger.error(f,"pool queue high listener error")}}}catch{}return this._updateIdleState(),!i||o}if(!this.workers.length)return!!i&&o;const h=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;const u=this.workers[h];try{const l=m(),c=this._prepareForTransfer(e,t);return c.transfer&&c.transfer.length?u.worker.postMessage(c.message,c.transfer):u.worker.postMessage(c.message),u._startTimes&&typeof u._startTimes.push=="function"&&u._startTimes.push(l),u.tasks++,this._activeTasks++,u.lastActive=l,this._updateIdleState(),!i||o}catch(l){if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:l})}catch{}return this._logger.error(l,"Failed to postMessage to fallback worker"),o}return this._logger.error(l,"Failed to postMessage to fallback worker"),!1}}_generateCorrelationId(){try{if(typeof globalThis<"u"&&globalThis.crypto&&typeof globalThis.crypto.randomUUID=="function")return globalThis.crypto.randomUUID()}catch{}try{if(typeof globalThis<"u"&&globalThis.crypto&&typeof globalThis.crypto.getRandomValues=="function"){const t=new Uint8Array(16);return globalThis.crypto.getRandomValues(t),Array.from(t).map(n=>n.toString(16).padStart(2,"0")).join("")}}catch{}const e=Math.floor(4294967295*Math.random()).toString(16);return`cid-${Date.now().toString(36)}-${e}`}_cleanupPendingResponse(e,t={}){const n=e!=null?String(e):e,r=this._pendingResponses.get(n);if(!r)return!1;try{if(r.timer)try{clearTimeout(r.timer)}catch{}}catch{}try{Object.prototype.hasOwnProperty.call(t,"resolveWith")?r.resolve(t.resolveWith):Object.prototype.hasOwnProperty.call(t,"rejectWith")&&r.reject(t.rejectWith)}catch{}finally{try{this._pendingResponses.delete(n)}catch{}}return!0}broadcast(e,t){const n=m();let r=null;const s=!(e===null||typeof e!="object"||ArrayBuffer.isView(e)||e instanceof ArrayBuffer);for(const i of this.workers)try{let a=e,o=t;if(!o&&s)try{r==null&&(r=this._encodeForTransfer(e));const h=r.slice();a=h,o=[h.buffer]}catch{a=e,o=void 0}o&&o.length?i.worker.postMessage(a,o):i.worker.postMessage(a),i._startTimes&&typeof i._startTimes.push=="function"&&i._startTimes.push(n),i.tasks++,this._activeTasks++,i.lastActive=n}catch(a){this._logger.error(a,"broadcast error")}this._updateIdleState()}stopThePress(e,t,n){const r=!n||n.recreateWorkers===void 0||!!n.recreateWorkers,s=n&&typeof n=="object"?Object.assign({},n):void 0;s&&delete s.recreateWorkers;try{this.queue&&typeof this.queue.clear=="function"&&this.queue.clear()}catch(o){this._logger.error(o,"stopThePress: failed to clear queue")}try{for(const[o]of this._pendingResponses)try{this._cleanupPendingResponse(o,{rejectWith:new Error("stopThePress: cancelled pending response")})}catch{}}catch(o){this._logger.error(o,"stopThePress: failed to cancel pending responses")}const i=this.workers.length,a=this.workers.map(o=>o&&o.id).filter(o=>o!=null);try{for(let o=this.workers.length-1;o>=0;o--){const h=this.workers[o];this._terminatedWorkerTaskCountsTotal+=h.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;try{h.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(h)}this.workers.length=0,this._activeTasks=0}catch(o){this._logger.error(o,"stopThePress: failed while terminating workers")}if(r||this._clearLifecycleIntervals(),r){const o=Math.max(this.minSize,Math.min(i,this.maxSize));for(let h=0;h<o;h++)this._addWorkerInstance();try{this._ensureReaper()}catch{}}try{a&&a.length&&this._bus.emit("pool:scale",{action:"remove",terminated:a,count:i})}catch(o){this._logger.error(o,"pool scale stopThePress listener error")}return this._updateIdleState(),this.postMessage(e,t,s)}postMessageBatch(e,t){if(!Array.isArray(e))throw new Error("postMessageBatch expects an array of {message, transfer?}");const n=!!(t&&(t.awaitResponse||t.correlationId!=null)),r=t&&typeof t.correlationIdFactory=="function"?t.correlationIdFactory:null;if(n){if(t&&t.correlationId!=null&&e.length>1&&!r)throw new Error("postMessageBatch cannot use a fixed correlationId for multiple items; provide options.correlationIdFactory or omit correlationId");const l=new Array(e.length);for(let c=0;c<e.length;c++){const p=e[c]||{},f=Object.assign({},t);r&&(f.correlationId=String(r(c,p))),l[c]=this.postMessage(p.message,p.transfer,f)}return l}const s=new Array(e.length),i=[],a=t&&t.workerId!=null?t.workerId:null,o=this.prepareBuffers(e,{clone:!0,zeroCopy:t&&!!t.zeroCopy});let h=null;if(a!=null){if(h=this.workers.find(l=>l.id===a),!h)return e.map(()=>!1)}else h=this._findLeastLoadedWorker();let u=!1;for(let l=0;l<e.length;l++){const c=e[l]||{},p=o[l]||{message:c.message,transfer:c.transfer};let f=!1;h&&h.tasks>=this._maxTasksPerWorker&&(h=null);let g=h;if(g||a!=null||(g=this._findLeastLoadedWorker()),g&&g.tasks<this._maxTasksPerWorker)try{const d=m();p.transfer&&p.transfer.length?g.worker.postMessage(p.message,p.transfer):g.worker.postMessage(p.message),g._startTimes&&typeof g._startTimes.push=="function"&&g._startTimes.push(d),g.tasks++,this._activeTasks++,g.lastActive=d,u=!0,s[l]=!0,f=!0,h=g.tasks<this._maxTasksPerWorker?g:null}catch{s[l]=!1,f=!0}if(!f&&a==null&&this.workers.length<this.maxSize)try{const d=this._addWorkerInstance(),y=m();p.transfer&&p.transfer.length?d.worker.postMessage(p.message,p.transfer):d.worker.postMessage(p.message),d._startTimes&&typeof d._startTimes.push=="function"&&d._startTimes.push(y),d.tasks++,this._activeTasks++,d.lastActive=y,u=!0,s[l]=!0,f=!0,h=d.tasks<this._maxTasksPerWorker?d:null}catch{s[l]=!1,f=!0}if(!f){if(a!=null){s[l]=!1;continue}if(this.taskQueueEnabled){const d=this._queuePolicy;d==="reject"||d==="drop-newest"&&this.queue.length>0?s[l]=!1:(d==="drop-oldest"&&this.queue.length>0&&this.queue.shift(),i.push({message:p.message,transfer:p.transfer}),s[l]=!0)}else if(this.workers.length){const d=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;const y=this.workers[d];try{const _=m();p.transfer&&p.transfer.length?y.worker.postMessage(p.message,p.transfer):y.worker.postMessage(p.message),y._startTimes&&typeof y._startTimes.push=="function"&&y._startTimes.push(_),y.tasks++,this._activeTasks++,y.lastActive=_,u=!0,s[l]=!0}catch(_){s[l]=!1,this._logger.error(_,"Failed to postMessage to fallback worker")}}else s[l]=!1}}if(i.length)try{this.queue.pushMany(i),u=!0}catch(l){this._logger.error(l,"postMessageBatch: failed to enqueue prepared items")}return u&&this._updateIdleState(),s}stopThePressBatch(e,t){const n=!t||t.recreateWorkers===void 0||!!t.recreateWorkers,r=t&&typeof t=="object"?Object.assign({},t):void 0;r&&delete r.recreateWorkers;try{this.queue&&typeof this.queue.clear=="function"&&this.queue.clear()}catch(i){this._logger.error(i,"stopThePressBatch: failed to clear queue")}try{for(const[i]of this._pendingResponses)try{this._cleanupPendingResponse(i,{rejectWith:new Error("stopThePressBatch: cancelled pending response")})}catch{}}catch(i){this._logger.error(i,"stopThePressBatch: failed to cancel pending responses")}const s=this.workers.length;try{for(let i=this.workers.length-1;i>=0;i--){const a=this.workers[i];this._terminatedWorkerTaskCountsTotal+=a.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;try{a.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(a)}this.workers.length=0,this._activeTasks=0}catch(i){this._logger.error(i,"stopThePressBatch: failed while terminating workers")}if(n||this._clearLifecycleIntervals(),n){const i=Math.max(this.minSize,Math.min(s,this.maxSize));for(let a=0;a<i;a++)this._addWorkerInstance();try{this._ensureReaper()}catch{}}this._updateIdleState();try{return this.postMessageBatch(e,r)}catch(i){try{this._logger.error(i,"stopThePressBatch: postMessageBatch failed")}catch{}try{return new Array(e?e.length:0).fill(!1)}catch{return[]}}}addWorker(){return this._addWorkerInstance()}removeWorker(){const e=this.workers.pop();if(e){this._decrementActiveTasks(e.tasks||0);try{e.worker.terminate()}catch{}this._deleteWorkerUnderlyingMapping(e),this._terminatedWorkerTaskCountsTotal+=e.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1}}_reapIdleWorkers(){if(this.idleTimeout<=0)return;const e=m();for(let t=this.workers.length-1;t>=0;t--){const n=this.workers[t];if(this.workers.length<=this.minSize)break;if(n.tasks===0&&e-(n.lastActive||0)>this.idleTimeout){try{n.worker.terminate()}catch{}try{const r=n.worker&&n.worker._underlying;r&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(r)}catch{}t===this.workers.length-1?this.workers.pop():this.workers[t]=this.workers.pop()}}this._updateIdleState()}_autoScaleTick(){try{if(!this._autoScale||!this._autoScale.enabled)return;const e=m(),t=this._autoScale;this._lastAutoScaleAt&&t.backoffResetMs&&e-this._lastAutoScaleAt>t.backoffResetMs&&(this._autoScaleBackoffMultiplier=1);const n=Math.floor((t.cooldownMs||0)*(this._autoScaleBackoffMultiplier||1));if(this._lastAutoScaleAt&&e-this._lastAutoScaleAt<n)return;const r=t.targetMs,s=t.hysteresis||.2,i=this._ewmaLatency,a=this.workers.length,o=i!=null&&i>r*(1+s),h=this.queue.length>Math.ceil(a*(1+s));if(o||h){if(a<this.maxSize)try{const l=Math.min(this.maxSize-a,t.stepUp||1);for(let c=0;c<l;c++)this._addWorkerInstance();this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min(t.backoffMaxMultiplier||8,Math.max(1,(this._autoScaleBackoffMultiplier||1)*(t.backoffFactor||1)))}catch(l){this._debugLog&&this._debugLog(l,"autoScale: addWorker failed")}return}const u=r*Math.max(0,1-s);if(i!=null&&i<u&&this.queue.length===0&&a>this.minSize)try{const l=Math.min(a-this.minSize,t.stepDown||1);for(let c=0;c<l;c++){const p=this.workers.pop();if(p){try{p.worker.terminate()}catch(f){this._debugLog&&this._debugLog(f,"autoScale: terminate worker")}this._deleteWorkerUnderlyingMapping(p)}}this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min(t.backoffMaxMultiplier||8,Math.max(1,(this._autoScaleBackoffMultiplier||1)*(t.backoffFactor||1)))}catch(l){this._debugLog&&this._debugLog(l,"autoScale: remove worker failed")}}catch(e){this._debugLog&&this._debugLog(e,"autoScaleTick outer")}}_emitIdle(){const e={data:{type:"pool:idle",stats:this.getStats()}};if(this._isIdle=!0,this._onmessage)try{this._onmessage(e)}catch(t){this._logger.error(t,"Pool onmessage handler error")}if(this._onidle)try{this._onidle(e)}catch(t){this._logger.error(t,"Pool onidle handler error")}try{this._bus.emit("message",e)}catch(t){this._logger.error(t,"pool listener error")}try{this._bus.emit("idle",e)}catch(t){this._logger.error(t,"pool idle listener error")}}_updateIdleState(){const e=this.queue.length===0,t=this._activeTasks===0&&e;t&&!this._isIdle?this._emitIdle():!t&&this._isIdle&&(this._isIdle=!1)}terminate(){try{this.shutdown()}catch{}}[Symbol.dispose](){this.terminate()}async[Symbol.asyncDispose](){try{await this.drain()}catch{}this.terminate()}getStats(){const e=this.workers.map(y=>({id:y.id,tasks:y.tasks,lastActive:y.lastActive})),t=m(),n=this._createdAt!=null?Math.max(0,t-this._createdAt):0,r=this._totalWorkersCreated||this.workers.length,s=this._totalTasksCompleted||0,i=this._terminatedWorkerTaskCountsCount||0,a=this._terminatedWorkerTaskCountsTotal||0;let o=0;for(const y of this.workers)o+=y.completedTasks||0;const h=i+(this.workers.length||0),u=h>0?(a+o)/h:0;let l=0,c=0,p=0,f=0,g=0;const d=this._taskDurationsWelfordCount||0;if(d>0){l=this._taskDurationsMin===Number.POSITIVE_INFINITY?0:this._taskDurationsMin,c=this._taskDurationsMax===Number.NEGATIVE_INFINITY?0:this._taskDurationsMax,p=this._taskDurationsWelfordMean;const y=d>1?this._taskDurationsWelfordM2/d:0;f=Math.sqrt(y),g=0}return{status:e,performance:{poolLiveDuration:n,totalWorkersCreated:r,totalTasksPerformed:s,averageTasksPerWorkerUntilTermination:u,timePerTask:{max:c,min:l,average:p,stddev:f},percentSlowTasks:g},queueLength:this.queue.length,activeTasks:this._activeTasks,workerCount:this.workers.length,minSize:this.minSize,maxSize:this.maxSize,isIdle:this._activeTasks===0&&this.queue.length===0}}drain(){const e=this.queue.length===0;return this._activeTasks===0&&e?Promise.resolve(this.getStats()):new Promise(t=>{const n=()=>{try{this.removeEventListener("idle",n)}catch{}t(this.getStats())};this.addEventListener("idle",n)})}addEventListener(e,t){if(typeof t=="function"&&(this._bus.on(e,t),e==="idle")){const n=this.queue.length===0;if(this._activeTasks===0&&n){const r={data:{type:"pool:idle",stats:this.getStats()}};try{t(r)}catch(s){this._logger.error(s,"pool idle listener error")}}}}removeEventListener(e,t){t&&typeof t=="function"&&this._bus.off(e,t)}get onresize(){return this._onresize}set onresize(e){this._onresize=e}get onmessage(){return this._onmessage}set onmessage(e){this._onmessage=e}get onerror(){return this._onerror}set onerror(e){this._onerror=e}get onidle(){return this._onidle}set onidle(e){if(this._onidle=e,typeof e=="function"){const t=this.queue.length===0;if(this._activeTasks===0&&t){const n={data:{type:"pool:idle",stats:this.getStats()}};try{e(n)}catch(r){this._logger.error(r,"Pool onidle handler error")}}}}pauseQueue(){this._queuePaused=!0}resumeQueue(){this._queuePaused&&(this._queuePaused=!1,this._dispatchQueuedTasks())}pause(){return this.pauseQueue()}resume(){return this.resumeQueue()}get queuePaused(){return this._queuePaused}_dispatchQueuedTasks(){if(this._queuePaused||!this.taskQueueEnabled||this.queue.length===0)return;const e=m();let t=!1;for(const n of this.workers)for(;this.queue.length>0&&n.tasks<this._maxTasksPerWorker;){const r=this.queue.shift();try{r.transfer&&r.transfer.length?n.worker.postMessage(r.message,r.transfer):n.worker.postMessage(r.message),n._startTimes&&typeof n._startTimes.push=="function"&&n._startTimes.push(e),n.tasks++,this._activeTasks++,n.lastActive=e,t=!0}catch(s){this._debugLog&&this._debugLog(s,"dispatch queued message to worker failed"),this._logger.error(s,"Failed to dispatch queued message to worker");break}}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1),t&&this._updateIdleState()}},H=class{constructor(e,t={}){if(typeof e!="function")throw new TypeError("PowerScheduler requires a flush function");this._flushFn=e,this._scheduling=t.scheduling==="macrotask"?"macrotask":"microtask",this._scheduled=!1,this._timer=null}get scheduled(){return this._scheduled}schedule(){this._scheduled||(this._scheduled=!0,this._scheduling!=="macrotask"?queueMicrotask(()=>this._run()):this._timer=setTimeout(()=>this._run(),0))}flush(){this._scheduled&&(this._timer&&(clearTimeout(this._timer),this._timer=null),this._run())}cancel(){this._scheduled&&(this._scheduled=!1,this._timer&&(clearTimeout(this._timer),this._timer=null))}_run(){if(this._scheduled){this._scheduled=!1,this._timer=null;try{this._flushFn()}catch{}}}},A=new WeakMap,Q=class{constructor(){this._settled=!1,this._status="pending",this.promise=new Promise((e,t)=>{A.set(this,{resolve:n=>{this._settled||(this._settled=!0,this._status="fulfilled",e(n))},reject:n=>{this._settled||(this._settled=!0,this._status="rejected",t(n))}})})}resolve(e){const t=A.get(this);t&&typeof t.resolve=="function"&&t.resolve(e)}reject(e){const t=A.get(this);t&&typeof t.reject=="function"&&t.reject(e)}get settled(){return this._settled}get status(){return this._status}get fulfilled(){return this._status==="fulfilled"}get rejected(){return this._status==="rejected"}},z=class{constructor(e,t={}){if(typeof e!="function")throw new TypeError("handler must be a function");const{maxSize:n=1/0,scheduling:r="microtask"}=t;this._handler=e,this._maxSize=Number(n)||1/0,this._queue=new M(16),this._pending=null,this._scheduler=new H(()=>this._runBatch(),{scheduling:r==="macrotask"?"macrotask":"microtask"})}add(e){if(this._queue.push(e),!this._pending){let t,n;this._pending={promise:new Promise((r,s)=>{t=r,n=s}),resolve:t,reject:n}}if(this._queue.length>=this._maxSize){const t=this._pending.promise;return this._scheduler.cancel(),this._runBatch(),t}return this._scheduler.scheduled||this._scheduler.schedule(),this._pending.promise}flush(){if(this._queue.length===0&&!this._scheduler.scheduled)return Promise.resolve();if(!this._pending){let e,t;this._pending={promise:new Promise((n,r)=>{e=n,t=r}),resolve:e,reject:t}}return this._scheduler.scheduled||this._scheduler.schedule(),this._pending.promise}async _runBatch(){const e=this._queue.toArray();if(e.length===0)return void(this._pending&&(this._pending.resolve(),this._pending=null));this._queue.clear();const t=this._pending;t&&(this._pending=null);try{await this._handler(e),t&&t.resolve()}catch(n){if(!t)throw n;t.reject(n)}}get size(){return this._queue.length}clear(){this._queue.clear(),this._pending&&(this._pending.reject(new Error("PowerBatch cleared before flush")),this._pending=null),this._scheduler.cancel()}};const Y={maxSize:16,scheduling:"microtask"},J={maxSize:8,scheduling:"microtask"},W={defaultTTL:6e4,maxEntries:1e3};function S(e){return e==null?"":String(e)}class Z{constructor({tileWorkerSource:t,gatherWorkerSource:n=null,tilePoolOptions:r={},gatherPoolOptions:s={},tileCacheOptions:i={},gatherCacheOptions:a={},tileBatchOptions:o={},gatherBatchOptions:h={},tileResponseMatcher:u=null,gatherResponseMatcher:l=null,tileToGather:c=null,logger:p=null}={}){if(!t)throw new Error("PowerTileManager requires tileWorkerSource");this._logger=p||new O(1,{name:"PowerTileManager"}),this._bus=new q({weak:!1}),this._requestCounter=0,this.tilePool=new U(t,r),this.tilePool.addEventListener("message",f=>this._handleTilePoolMessage(f)),this.tilePool.addEventListener("error",f=>this._emit("error",{path:"tile",error:f})),this.tilePool.addEventListener("idle",()=>this._emit("idle",{path:"tile"})),this.gatherPool=n?new U(n,s):null,this.gatherPool&&(this.gatherPool.addEventListener("message",f=>this._handleGatherPoolMessage(f)),this.gatherPool.addEventListener("error",f=>this._emit("error",{path:"gather",error:f})),this.gatherPool.addEventListener("idle",()=>this._emit("idle",{path:"gather"}))),this.tileCache=new C(Object.assign({},W,i)),this.gatherCache=this.gatherPool?new C(Object.assign({},W,a)):null,this._tileResponseMatcher=typeof u=="function"?u:this._defaultTileResponseMatcher,this._gatherResponseMatcher=typeof l=="function"?l:this._defaultGatherResponseMatcher,this._tileToGather=typeof c=="function"?c:null,this._pendingTileRequests=new Map,this._pendingGatherRequests=new Map,this._tileBatch=new z(f=>this._dispatchTileBatch(f),Object.assign({},Y,o)),this._gatherBatch=this.gatherPool?new z(f=>this._dispatchGatherBatch(f),Object.assign({},J,h)):null}on(t,n){return this._bus.on(t,n)}off(t,n){this._bus.off(t,n)}_emit(t,n){try{this._bus.emit(t,n)}catch(r){this._logger.error(r,`PowerTileManager emit(${t}) failed`)}}_generateRequestId(){return`ptm-${Date.now().toString(36)}-${++this._requestCounter}-${Math.floor(Math.random()*4294967295).toString(16)}`}_normalizeMessage(t){if(t instanceof ArrayBuffer||ArrayBuffer.isView(t))try{return L(t)}catch{return t}return t}_defaultTileResponseMatcher(t){if(!t||typeof t!="object")return null;const n=t.requestId||t.tileKey||t._tileManager&&t._tileManager.requestId;return n!=null?{key:S(n),result:t}:null}_defaultGatherResponseMatcher(t){if(!t||typeof t!="object")return null;const n=t.requestId||t.pieceKey||t._tileManager&&t._tileManager.requestId;return n!=null?{key:S(n),result:t}:null}async _dispatchTileBatch(t){const n=t.map(s=>({message:Object.assign({},s.message||{},{requestId:s.requestId,tileKey:s.key,_tileManager:{requestId:s.requestId,tileKey:s.key,cacheKey:s.cacheKey,gather:s.gather}}),transfer:s.transfer})),r=this.tilePool.postMessageBatch(n,{zeroCopy:!0});for(let s=0;s<t.length;s+=1){const i=t[s];if(!r[s]){i.reject(new Error("Tile request was rejected by the tile pool")),this._pendingTileRequests.delete(i.requestId);continue}i.awaitResponse||i.resolve(!0)}return!0}async _dispatchGatherBatch(t){const n=t.map(s=>({message:Object.assign({},s.message||{},{requestId:s.requestId,pieceKey:s.key,_tileManager:{requestId:s.requestId,pieceKey:s.key,cacheKey:s.cacheKey}}),transfer:s.transfer})),r=this.gatherPool.postMessageBatch(n,{zeroCopy:!0});for(let s=0;s<t.length;s+=1){const i=t[s];if(!r[s]){i.reject(new Error("Gather request was rejected by the gather pool")),this._pendingGatherRequests.delete(i.requestId);continue}i.awaitResponse||i.resolve(!0)}return!0}_createRequest(t,n){const r=t.requestId||this._generateRequestId(),s=new Q;return{request:Object.assign({},t,{requestId:r,cacheKey:n??t.key,resolve:s.resolve,reject:s.reject,createdAt:Date.now()}),promise:s.promise}}async processTile(t,n,{transfer:r,cacheKey:s,awaitResponse:i=!1,timeout:a=15e3,gather:o=!0}={}){const h=s!=null?String(s):String(t);if(h&&this.tileCache.has(h))return Promise.resolve(this.tileCache.get(h));const u={key:String(t),message:n,transfer:r,awaitResponse:!!i,gather:!!o,cacheKey:h},{request:l,promise:c}=this._createRequest(u,h);return this._pendingTileRequests.set(l.requestId,l),a&&Number.isFinite(a)&&a>0&&(l.timeoutId=setTimeout(()=>{this._pendingTileRequests.has(l.requestId)&&(this._pendingTileRequests.delete(l.requestId),l.reject(new Error("Tile request timeout")))},a)),h?this.tileCache.getOrSetAsync(h,async()=>(await this._tileBatch.add(l),c),{ttl:this.tileCache.defaultTTL}):(await this._tileBatch.add(l),c)}async enqueueGatherPiece(t,n,{transfer:r,cacheKey:s,awaitResponse:i=!1,timeout:a=15e3}={}){if(!this.gatherPool)throw new Error("Gather worker pool is not configured");const o=s!=null?String(s):String(t);if(o&&this.gatherCache&&this.gatherCache.has(o))return Promise.resolve(this.gatherCache.get(o));const h={key:String(t),message:n,transfer:r,awaitResponse:!!i,cacheKey:o},{request:u,promise:l}=this._createRequest(h,o);return this._pendingGatherRequests.set(u.requestId,u),a&&Number.isFinite(a)&&a>0&&(u.timeoutId=setTimeout(()=>{this._pendingGatherRequests.has(u.requestId)&&(this._pendingGatherRequests.delete(u.requestId),u.reject(new Error("Gather request timeout")))},a)),o&&this.gatherCache?this.gatherCache.getOrSetAsync(o,async()=>(await this._gatherBatch.add(u),l),{ttl:this.gatherCache.defaultTTL}):(await this._gatherBatch.add(u),l)}_handleTilePoolMessage(t){const n=this._normalizeMessage(t&&t.data),r=this._tileResponseMatcher(n),s=r&&r.key?S(r.key):null,i=r&&Object.prototype.hasOwnProperty.call(r,"result")?r.result:n,a=s?this._pendingTileRequests.get(s):null;if(a&&(clearTimeout(a.timeoutId),this._pendingTileRequests.delete(s),a.resolve(i),a.cacheKey&&this.tileCache.has(a.cacheKey)===!1&&this.tileCache.set(a.cacheKey,i)),this._emit("tile:result",{result:i,requestId:s,cacheKey:a&&a.cacheKey,raw:n}),this._tileToGather&&this.gatherPool)try{const o=this._tileToGather(i);o&&o.message!=null&&this.enqueueGatherPiece(S(o.pieceKey||o.requestId||s||`piece-${Date.now().toString(36)}`),o.message,{transfer:o.transfer,cacheKey:o.cacheKey,awaitResponse:!!o.awaitResponse,timeout:o.timeout}).catch(h=>{this._emit("gather:error",{error:h,source:"tileToGather"})})}catch(o){this._logger.error(o,"tileToGather mapper failed")}}_handleGatherPoolMessage(t){const n=this._normalizeMessage(t&&t.data),r=this._gatherResponseMatcher(n),s=r&&r.key?S(r.key):null,i=r&&Object.prototype.hasOwnProperty.call(r,"result")?r.result:n,a=s?this._pendingGatherRequests.get(s):null;a&&(clearTimeout(a.timeoutId),this._pendingGatherRequests.delete(s),a.resolve(i),createDeferred,a.cacheKey&&this.gatherCache&&this.gatherCache.has(a.cacheKey)===!1&&this.gatherCache.set(a.cacheKey,i)),this._emit("gather:result",{result:i,requestId:s,cacheKey:a&&a.cacheKey,raw:n})}async drain(){const t=[this.tilePool.drain()];return this.gatherPool&&t.push(this.gatherPool.drain()),Promise.all(t).then(n=>({tilePool:n[0],gatherPool:n[1]||null}))}shutdown(){try{this.tilePool&&this.tilePool.terminate(),this.gatherPool&&this.gatherPool.terminate(),this._tileBatch&&this._tileBatch.clear(),this._gatherBatch&&this._gatherBatch.clear(),this._pendingTileRequests.clear(),this._pendingGatherRequests.clear(),this._bus.clear()}catch(t){this._logger.error(t,"PowerTileManager shutdown failed")}}}function R(e,t,n=new WeakMap){if(e===t)return!0;if(e==null||t==null||typeof e!="object"||typeof t!="object"||e.constructor!==t.constructor)return!1;if(n.has(e))return n.get(e)===t;if(n.set(e,t),Array.isArray(e)){if(!Array.isArray(t)||e.length!==t.length)return!1;for(let i=0;i<e.length;i+=1)if(!R(e[i],t[i],n))return!1;return!0}if(e instanceof Date&&t instanceof Date)return e.getTime()===t.getTime();if(e instanceof RegExp&&t instanceof RegExp)return e.toString()===t.toString();if(ArrayBuffer.isView(e)&&ArrayBuffer.isView(t)){if(e.byteLength!==t.byteLength)return!1;const i=new Uint8Array(e.buffer,e.byteOffset,e.byteLength),a=new Uint8Array(t.buffer,t.byteOffset,t.byteLength);for(let o=0;o<i.length;o+=1)if(i[o]!==a[o])return!1;return!0}const r=Object.keys(e),s=Object.keys(t);if(r.length!==s.length)return!1;for(const i of r)if(!Object.prototype.hasOwnProperty.call(t,i)||!R(e[i],t[i],n))return!1;return!0}class j{constructor(t){this.map=t.map,this.source=t.source instanceof maplibregl.VectorTileSource?t.source:this.map.getSource(t.source),this.sourceLayer=t.sourceLayer,this.fid=t.fid||"id",this.tiles=this.source.tiles.map(i=>i.split("{z}")[0]),this.tileSize=this.source.tileSize||512,this.tolerance=t.tolerance||1e-5,this.cacheSize=t.cacheSize||5e3,this.units=t.units||"meters",this.seed=!1,this.map.addSource(this.source.id+"-proper",{type:"geojson",maxzoom:this.source.maxzoom,promoteId:"_index",data:{}}),this.gjSource=this.map.getSource(this.source.id+"-proper");const n=new Z({tileWorkerSource:F,gatherWorkerSource:D,tilePoolOptions:{size:6,minSize:2,maxSize:6,idleTimeout:3e4,taskQueue:!0,queuePolicy:"enqueue"},gatherPoolOptions:{size:4,minSize:2,maxSize:4,idleTimeout:3e4,taskQueue:!0},tileCacheOptions:{maxEntries:this.cacheSize,defaultTTL:6e4},gatherCacheOptions:{maxEntries:this.cacheSize,defaultTTL:6e4},tileToGather:i=>{if(!i||i.type!=="simplified"||!i.unique)return null;const{unique:a,type:o,...h}=i;return{pieceKey:a,cacheKey:`gather:${a}`,message:{pieces:{[a]:h},tolerance:this.tolerance,unit:this.units,tileSize:this.tileSize},awaitResponse:!0}}}),r={add:new Map,remove:new Set},s=()=>{if(r.add.size===0&&r.remove.size===0){console.log("No changes to apply, skipping update");return}console.log(`Applying diff with ${r.add.size} additions and ${r.remove.size} removals`);const i=[...r.add.values()],a=[...r.remove];this.gjSource.updateData({add:i,remove:a}),r.add.clear(),r.remove.clear()};return n.on("gather:result",({result:i})=>{const a=i&&i.id,o=i&&i.features;if(!a||!Array.isArray(o))return;const h=`gather:${a}`,u=n.gatherCache&&n.gatherCache.has(h)?n.gatherCache.get(h):void 0;u&&!R(u,o)?([...new Set(u.map(c=>c.properties._index))].forEach(c=>r.remove.add(c)),o.forEach(c=>r.add.set(c.properties._index,c)),n.gatherCache.set(h,o)):u||(o.forEach(l=>r.add.set(l.properties._index,l)),n.gatherCache.set(h,o))}),n.on("idle",i=>{i&&i.path==="gather"&&s()}),this.map.on("sourcedata",i=>{if(i.sourceId===this.source.id){const{z:a,x:o,y:h}=i.tile.tileID.canonical,u=`${a}|${o}|${h}`,l=this.tolerance*Math.pow(10,-.301*a+5.19),c=[],p=this.source.type==="vector"?{sourceLayer:this.sourceLayer}:{};i.tile.querySourceFeatures(c,p);const f={collection:{type:"FeatureCollection",features:c.map((g,d)=>({id:g.properties[this.fid]||g.id,geometry:g.geometry,properties:{...g.properties,_index:`${u}|${d}`,_tile:u,_group:g.properties[this.fid]}}))},tolerance:l,unique:u,tileSize:this.tileSize};n.processTile(u,f,{cacheKey:u,awaitResponse:!0,timeout:15e3}).catch(g=>{console.error("PowerTileManager tile processing failed",g)})}}),this.map.refreshTiles(this.source.id),this.gjSource}}return maplibregl.VectorTileSource.prototype.ProperLabels=function(e){const t=Object.assign({},e,{map:this._map,source:this});return this._proper||(this._proper=new j(t)),this._proper},j}));
+`,O=typeof self<"u"&&self.Blob&&new Blob(["URL.revokeObjectURL(import.meta.url);",I],{type:"text/javascript;charset=utf-8"});function H(h){let e;try{if(e=O&&(self.URL||self.webkitURL).createObjectURL(O),!e)throw"";const n=new Worker(e,{type:"module",name:h?.name});return n.addEventListener("error",()=>{(self.URL||self.webkitURL).revokeObjectURL(e)}),n}catch{return new Worker("data:text/javascript;charset=utf-8,"+encodeURIComponent(I),{type:"module",name:h?.name})}}class z{constructor(e){return this.map=e.map,this.source=e.source instanceof maplibregl.VectorTileSource?e.source:this.map.getSource(e.source),this.sourceLayer=e.sourceLayer,this.fid=e.fid||"id",this.tileSize=this.source.tileSize||512,this.tolerance=e.tolerance||1e-5,this.cacheSize=e.cacheSize||5e3,this.units=e.units||"meters",this.map.addSource(this.source.id+"-proper",{type:"geojson",maxzoom:this.source.maxzoom,promoteId:"_index",data:{}}),this.gjSource=this.map.getSource(this.source.id+"-proper"),this.manager=new $({map:this.map,source:this.source,sourceLayer:this.sourceLayer,fid:this.fid,tileSize:this.tileSize,tolerance:this.tolerance,cacheSize:this.cacheSize,units:this.units,tileWorkerSource:K,gatherWorkerSource:H}),this.manager.setGeoJsonSource(this.gjSource),this.map.on("sourcedata",n=>this.manager.handleSourceData(n)),this.map.refreshTiles(this.source.id),this.gjSource}}return maplibregl.VectorTileSource.prototype.ProperLabels=function(h){const e=Object.assign({},h,{map:this._map,source:this});return this._proper||(this._proper=new z(e)),this._proper},z}));
