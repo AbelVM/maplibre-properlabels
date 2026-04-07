@@ -1,14 +1,27 @@
+/**
+ * Tile worker: flatten incoming feature groups, filter polygons,
+ * and emit a simplified worker payload back to the main thread.
+ */
 import { o2u8, u82o } from 'performance-helpers';
 import { flatten, strictOuterCheck, countGeoJSONPoints } from '../utils/geomHelper.js';
 
-const _root =
+const getWorkerScope = () =>
   typeof self !== 'undefined' ? self : typeof globalThis !== 'undefined' ? globalThis : {};
 
+const _root = getWorkerScope();
+
+/**
+ * @param {MessageEvent<ArrayBuffer|ArrayBufferView>} e
+ */
 _root.onmessage = (e) => {
   const buffer_input = e.data;
-  const incoming = u82o(buffer_input);
+  const incoming =
+    buffer_input instanceof ArrayBuffer || ArrayBuffer.isView(buffer_input)
+      ? u82o(buffer_input)
+      : buffer_input;
   const tolerance = incoming.tolerance;
   const unique = incoming.unique;
+  const correlationId = incoming.correlationId;
   const tileSize = incoming.tileSize;
   const mutate = true;
 
@@ -41,6 +54,9 @@ _root.onmessage = (e) => {
 
   const op = Object.fromEntries(outputMap);
   const payload = Object.assign({}, op, { unique, type: 'simplified', size });
+  if (correlationId != null) {
+    payload.correlationId = correlationId;
+  }
   const buffer = o2u8(payload).buffer;
   _root.postMessage(buffer, [buffer]);
 };

@@ -249,4 +249,113 @@ describe('ProperLabels sourcedata posting', () => {
       payload.collection.features[0].properties && payload.collection.features[0].properties.circ
     ).toBeTruthy();
   });
+
+  it('removes the sourcedata listener when disposed', async () => {
+    const { default: ProperLabels } = await import('../src/index.js');
+
+    const sourceInst = new maplibregl.VectorTileSource();
+    sourceInst.id = 'ps4';
+    sourceInst.tiles = ['http://example.com/{z}/{x}/{y}.pbf'];
+    sourceInst.tileSize = 512;
+
+    const gjsource = { setData: vi.fn(), updateData: vi.fn() };
+    const mapStub = {
+      _sources: {},
+      addSource: vi.fn((id, opts) => {
+        mapStub._sources[id] = gjsource;
+      }),
+      getSource: (id) =>
+        id === 'ps4'
+          ? sourceInst
+          : id === 'ps4-proper'
+          ? gjsource
+          : mapStub._sources[id],
+      removeSource: vi.fn((id) => {
+        delete mapStub._sources[id];
+      }),
+      setTransformRequest: vi.fn((fn) => {
+        mapStub._transform = fn;
+      }),
+      on: vi.fn((ev, cb) => {
+        mapStub._sourcedataCb = cb;
+      }),
+      off: vi.fn((ev, cb) => {
+        if (mapStub._sourcedataCb === cb) {
+          mapStub._sourcedataCb = null;
+        }
+      }),
+      refreshTiles: vi.fn(),
+      querySourceFeatures: vi.fn(() => []),
+    };
+    mapStub._map = mapStub;
+
+    const pl = new ProperLabels({
+      map: mapStub,
+      source: 'ps4',
+      sourceLayer: 'layer',
+      fid: 'id',
+    });
+
+    expect(mapStub.off).toHaveBeenCalledTimes(0);
+    expect(typeof mapStub._sourcedataCb).toBe('function');
+
+    pl.dispose();
+
+    expect(mapStub.off).toHaveBeenCalledWith('sourcedata', expect.any(Function));
+    expect(mapStub._sourcedataCb).toBeNull();
+    expect(mapStub.removeSource).toHaveBeenCalledWith('ps4-proper');
+  });
+
+  it('preserves the auxiliary source when keepSource is true', async () => {
+    const { default: ProperLabels } = await import('../src/index.js');
+
+    const sourceInst = new maplibregl.VectorTileSource();
+    sourceInst.id = 'ps5';
+    sourceInst.tiles = ['http://example.com/{z}/{x}/{y}.pbf'];
+    sourceInst.tileSize = 512;
+
+    const gjsource = { setData: vi.fn(), updateData: vi.fn() };
+    const mapStub = {
+      _sources: {},
+      addSource: vi.fn((id, opts) => {
+        mapStub._sources[id] = gjsource;
+      }),
+      getSource: (id) =>
+        id === 'ps5'
+          ? sourceInst
+          : id === 'ps5-proper'
+          ? gjsource
+          : mapStub._sources[id],
+      removeSource: vi.fn((id) => {
+        delete mapStub._sources[id];
+      }),
+      setTransformRequest: vi.fn((fn) => {
+        mapStub._transform = fn;
+      }),
+      on: vi.fn((ev, cb) => {
+        mapStub._sourcedataCb = cb;
+      }),
+      off: vi.fn((ev, cb) => {
+        if (mapStub._sourcedataCb === cb) {
+          mapStub._sourcedataCb = null;
+        }
+      }),
+      refreshTiles: vi.fn(),
+      querySourceFeatures: vi.fn(() => []),
+    };
+    mapStub._map = mapStub;
+
+    const pl = new ProperLabels({
+      map: mapStub,
+      source: 'ps5',
+      sourceLayer: 'layer',
+      fid: 'id',
+      keepSource: true,
+    });
+
+    pl.dispose();
+
+    expect(mapStub.removeSource).not.toHaveBeenCalled();
+    expect(mapStub.getSource('ps5-proper')).toBe(gjsource);
+  });
 });

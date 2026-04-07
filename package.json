@@ -37,7 +37,11 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run test:e2e",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint 'src/**/*.js' 'test/**/*.js'",
+    "lint:fix": "eslint --fix 'src/**/*.js' 'test/**/*.js'",
+    "format": "prettier --write 'src/**/*.js' 'test/**/*.js' 'README.md'",
+    "clean": "rm -rf dist .vite .cache"
   },
   "dependencies": {
     "@turf/area": "^7.3.4",
@@ -57,7 +61,9 @@
     "http-server": "^14.1.1",
     "terser": "^5.46.1",
     "vite": "^7.2.2",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
   },
   "vitest": {
     "exclude": [

@@ -178,8 +178,12 @@
                         id="black" value="black_checkbox" />MapLibre labels for polygons </label></li>
             <li><span class="label-sw red" aria-hidden="true">Label</span> <label><input type="radio" name="label"
                         id="red" value="red_checkbox" checked />The proper labels</label></li>
-            <li><span class="swatch blue" aria-hidden="true"></span> Not clipped countries</li>
-            <li><span class="swatch green" aria-hidden="true"></span> Clipped countries</li>
+            <li><label>
+                    Area filter (<span id="area-value">0</span> km²)
+                    <input id="slider" type="range" min="0" max="100" value="0" />
+                </label></li>
+            <!--  <li><span class="swatch blue" aria-hidden="true"></span> Not clipped countries</li>
+            <li><span class="swatch green" aria-hidden="true"></span> Clipped countries</li> -->
             <li><span class="line-sw" aria-hidden="true"></span> <label><input type="checkbox" id="tiles"
                         value="tiles_checkbox" />Tile boundaries</label></li>
         </ul>
@@ -266,7 +270,17 @@
         const
             redlabel = document.querySelector('#red'),
             blacklabel = document.querySelector('#black'),
-            redline = document.querySelector('#tiles');
+            redline = document.querySelector('#tiles'),
+            filter = document.querySelector('#slider'),
+            logslider = (position, minval, maxval) => {
+                const minp = 0;
+                const maxp = 100;
+                const minv = Math.log(Math.max(minval, 0.00001));
+                const maxv = Math.log(maxval);
+                const scale = (maxv - minv) / (maxp - minp);
+                const result = Math.exp(minv + scale * (position - minp));
+                return result;
+            };
 
         redlabel.addEventListener('change', e => {
             map.setLayoutProperty('countries-labels-proper', 'visibility', e.target.checked ? 'visible' : 'none');
@@ -278,6 +292,11 @@
         });
         redline.addEventListener('change', e => {
             map.showTileBoundaries = e.target.checked;
+        });
+        filter.addEventListener('change', e => {
+            const val = logslider(e.target.value, 2000, 1.71e13);
+            document.querySelector('#area-value').textContent = (val / 1e6).toExponential(2);
+            map.setFilter('countries-labels-proper', ['>', ['get', '_area'], val]);
         });
 
     </script>

@@ -1,72 +1,108 @@
-import { o2u8, u82o } from 'performance-helpers';
-import { safePolylabel, polygonArea, union, flatten, simplify } from '../utils/geomHelper.js';
+/**
+ * Gather worker: merge piece collections, simplify polygons, and compute
+ * label-friendly points to return to the main thread.
+ */
+import { o2u8, u82o, PowerLogger } from 'performance-helpers';
+import { safePolylabel, polygonArea, setGeomWorkerDebugLevel, union, flatten, simplify } from '../utils/geomHelper.js';
 
-const _root =
+const getWorkerScope = () =>
   typeof self !== 'undefined' ? self : typeof globalThis !== 'undefined' ? globalThis : {};
 
+const _root = getWorkerScope();
+const logger = new PowerLogger(0, { name: 'properlabels-gather' });
+
+const normalizeCollection = (collection) => {
+  const hasMultiPolygon = collection.features.some((f) => f.geometry.type === 'MultiPolygon');
+  return hasMultiPolygon ? flatten(collection) : collection;
+};
+
+const collectPolygonFeatures = (group) => {
+  const features = [];
+  for (const cur of group) {
+    const curFeatures = cur.features;
+    for (let i = 0; i < curFeatures.length; i += 1) {
+      const feature = curFeatures[i];
+      if (feature.geometry.type === 'Polygon') {
+        features.push(feature);
+      }
+    }
+  }
+  return features;
+};
+
+/**
+ * @param {MessageEvent<ArrayBuffer|ArrayBufferView>} e
+ */
 _root.onmessage = (e) => {
   const buffer = e.data;
-  const incoming = u82o(buffer);
+  const incoming =
+    buffer instanceof ArrayBuffer || ArrayBuffer.isView(buffer) ? u82o(buffer) : buffer;
+  const debugLevel = Number.isFinite(Number(incoming.debugLevel))
+    ? Math.max(0, Math.min(3, Math.floor(Number(incoming.debugLevel))))
+    : 0;
+  setGeomWorkerDebugLevel(debugLevel);
+  logger.setDebugLevel(debugLevel);
   const pieces = Object.values(incoming.pieces);
   const tolerance = incoming.tolerance || 0.00001;
   const units = incoming.unit || 'meters';
   const tileSize = incoming.tileSize || 512;
+  const correlationId = incoming.correlationId;
 
   const groupedMap = new Map();
   pieces.forEach((f) => {
     for (const [key, value] of Object.entries(f)) {
-      const arr = groupedMap.get(key) || [];
-      arr.push(value);
-      groupedMap.set(key, arr);
+      const arr = groupedMap.get(key);
+      if (arr) {
+        arr.push(value);
+      } else {
+        groupedMap.set(key, [value]);
+      }
     }
   });
 
   for (const [id, group] of groupedMap.entries()) {
-    if (id === 'size') continue;
-    let collection = {
+    if (id === 'size' || id === 'unique' || id === 'type') continue;
+    const featureAcc = collectPolygonFeatures(group);
+    let collection = normalizeCollection({
       type: 'FeatureCollection',
-      features: group
-        .reduce((acc, cur) => [...acc, ...cur.features], [])
-        .filter((f) => f.geometry.type === 'Polygon'),
-    };
-    if (collection.features.some((f) => f.geometry.type === 'MultiPolygon')) {
-      collection = flatten(collection);
+      features: featureAcc,
+    });
+
+    let clippedFeatures = [];
+    let unclipped = [];
+    if (collection.features.length > 1) {
+      for (const feature of collection.features) {
+        if (feature.properties.clipped) {
+          clippedFeatures.push(feature);
+        } else {
+          unclipped.push(feature);
+        }
+      }
     }
-    if (collection.features.some((f) => f.properties.clipped) && collection.features.length > 1) {
-      let clippedFeatures = {
-        type: 'FeatureCollection',
-        features: collection.features.filter((f) => f.properties.clipped),
-      };
-      const unclipped = collection.features.filter((f) => !f.properties.clipped);
 
-      // TODO: grafo de conexiones para evitar union de todo el grupo cuando no es necesario (ej: 2 polígonos recortados que no se tocan no necesitan union)
-
-      if (clippedFeatures.features.length > 1) {
+    if (clippedFeatures.length > 0 && collection.features.length > 1) {
+      if (clippedFeatures.length > 1) {
         const { clipped, ...cprops } = collection.features[0].properties;
-        cprops._index = clippedFeatures.features
+        cprops._index = clippedFeatures
           .map((f) => f.properties._index)
           .sort()
           .join('-');
-        clippedFeatures = union(clippedFeatures);
-        clippedFeatures = {
-          type: 'FeatureCollection',
-          features: [
-            {
-              type: 'Feature',
-              geometry: clippedFeatures.geometry,
-              properties: cprops,
-            },
-          ],
-        };
+        const unioned = union({ type: 'FeatureCollection', features: clippedFeatures });
+        clippedFeatures = [
+          {
+            type: 'Feature',
+            geometry: unioned.geometry,
+            properties: cprops,
+          },
+        ];
       }
       collection = {
         type: 'FeatureCollection',
-        features: [...unclipped, ...clippedFeatures.features],
+        features: [...unclipped, ...clippedFeatures],
       };
     }
-    if (collection.features.some((f) => f.geometry.type === 'MultiPolygon')) {
-      collection = flatten(collection);
-    }
+
+    collection = normalizeCollection(collection);
     collection.features = collection.features.map((f, i) => {
       const idx = `${id}-${i}`;
       const origGeom = f.geometry;
@@ -76,7 +112,7 @@ _root.onmessage = (e) => {
         f.geometry = safePolylabel(f, tolerance);
         f.properties = { ...origProps, _area: areaVal, _groupId: id };
       } else {
-        console.log(
+        logger.warn(
           'Unexpected geometry type after union/simplify/flatten for id:' +
             id +
             ' - type:' +
@@ -105,5 +141,9 @@ _root.onmessage = (e) => {
     const buffer = o2u8(collection).buffer;
     _root.postMessage(buffer, [buffer]);
   }
-  _root.postMessage({ type: 'commit' });
+  const commit = { type: 'commit' };
+  if (correlationId != null) {
+    commit.correlationId = correlationId;
+  }
+  _root.postMessage(commit);
 };
