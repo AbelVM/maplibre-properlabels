@@ -10,6 +10,7 @@
  * @property {string} [units] Units used for area calculations.
  * @property {number} [postDelay] Debounce delay in milliseconds for source events.
  * @property {number} [debugLevel] Debug verbosity level for PowerLogger output (0..3).
+ * @property {number} [gatherTimeout] Timeout in milliseconds for gather worker responses.
  */
 
 import { PowerLogger } from 'performance-helpers';
@@ -92,6 +93,9 @@ export default class ProperLabels {
       ? Math.max(0, Math.min(3, Math.floor(Number(options.debugLevel))))
       : 0;
     this.keepSource = options.keepSource === true;
+    this.gatherTimeout = Number.isFinite(Number(options.gatherTimeout))
+      ? Math.max(0, Number(options.gatherTimeout))
+      : 60000;
 
     this._logger = new PowerLogger(this.debugLevel, { name: 'properlabels' });
 
@@ -115,6 +119,7 @@ export default class ProperLabels {
       units: this.units,
       postDelay: this.postDelay,
       debugLevel: this.debugLevel,
+      gatherTimeout: this.gatherTimeout,
       tileWorkerSource: TileWorker,
       gatherWorkerSource: GatherWorker,
     });

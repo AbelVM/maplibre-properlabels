@@ -94,7 +94,8 @@ describe('worker binary decoding', () => {
     expect(decoded).toHaveProperty('id', 'feature-1');
     expect(decoded).toHaveProperty('features');
     const commitCall = globalThis.postMessage.mock.calls[1][0];
-    expect(commitCall).toEqual({ type: 'commit', correlationId: 'cid-gather-1' });
+    expect(commitCall).toMatchObject({ type: 'commit', correlationId: 'cid-gather-1' });
+    expect(typeof commitCall.timestamp).toBe('number');
     restoreGlobals(orig);
   });
 
@@ -468,5 +469,148 @@ describe('worker binary decoding', () => {
 
     expect(globalThis.postMessage).toHaveBeenCalledTimes(2);
     restoreGlobals(orig);
+  });
+
+  it('uses adaptive component concurrency = 1 for small clipped groups', async () => {
+    const orig = {
+      postMessage: globalThis.postMessage,
+      onmessage: globalThis.onmessage,
+      self: globalThis.self,
+      navigator: globalThis.navigator,
+    };
+    globalThis.postMessage = vi.fn();
+    globalThis.onmessage = null;
+    globalThis.self = globalThis;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { hardwareConcurrency: 12 },
+      configurable: true,
+      writable: true,
+    });
+
+    vi.resetModules();
+    const lightspeedSpy = vi.fn(async (features) => [features]);
+    vi.doMock('../src/utils/geomHelper.js', async () => {
+      const actual = await vi.importActual('../src/utils/geomHelper.js');
+      return {
+        ...actual,
+        lightspeedPolygonComponents: lightspeedSpy,
+      };
+    });
+
+    await import('../src/workers/gatherWorker.js');
+
+    const payload = {
+      pieces: {
+        groupA: {
+          featureA: {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+                properties: { _tile: '0|0|0', _index: 'a-0', clipped: true },
+              },
+              {
+                type: 'Feature',
+                geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+                properties: { _tile: '0|0|0', _index: 'a-1', clipped: true },
+              },
+            ],
+          },
+        },
+      },
+      tolerance: 0.00001,
+      unit: 'meters',
+      tileSize: 512,
+      gatherPoolSize: 2,
+    };
+
+    await globalThis.onmessage?.({ data: o2u8(payload).buffer });
+
+    expect(lightspeedSpy).toHaveBeenCalledTimes(1);
+    expect(lightspeedSpy.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ concurrency: 1 })
+    );
+
+    if (orig.navigator === undefined) {
+      delete globalThis.navigator;
+    } else {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: orig.navigator,
+        configurable: true,
+        writable: true,
+      });
+    }
+    restoreGlobals(orig);
+    vi.doUnmock('../src/utils/geomHelper.js');
+  });
+
+  it('uses adaptive component concurrency > 1 for larger clipped groups when budget allows', async () => {
+    const orig = {
+      postMessage: globalThis.postMessage,
+      onmessage: globalThis.onmessage,
+      self: globalThis.self,
+      navigator: globalThis.navigator,
+    };
+    globalThis.postMessage = vi.fn();
+    globalThis.onmessage = null;
+    globalThis.self = globalThis;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { hardwareConcurrency: 12 },
+      configurable: true,
+      writable: true,
+    });
+
+    vi.resetModules();
+    const lightspeedSpy = vi.fn(async (features) => [features]);
+    vi.doMock('../src/utils/geomHelper.js', async () => {
+      const actual = await vi.importActual('../src/utils/geomHelper.js');
+      return {
+        ...actual,
+        lightspeedPolygonComponents: lightspeedSpy,
+      };
+    });
+
+    await import('../src/workers/gatherWorker.js');
+
+    const clippedFeatures = Array.from({ length: 10 }, (_, i) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+      properties: { _tile: '0|0|0', _index: `a-${i}`, clipped: true },
+    }));
+
+    const payload = {
+      pieces: {
+        groupA: {
+          featureA: {
+            type: 'FeatureCollection',
+            features: clippedFeatures,
+          },
+        },
+      },
+      tolerance: 0.00001,
+      unit: 'meters',
+      tileSize: 512,
+      gatherPoolSize: 1,
+    };
+
+    await globalThis.onmessage?.({ data: o2u8(payload).buffer });
+
+    expect(lightspeedSpy).toHaveBeenCalledTimes(1);
+    expect(lightspeedSpy.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ concurrency: 2 })
+    );
+
+    if (orig.navigator === undefined) {
+      delete globalThis.navigator;
+    } else {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: orig.navigator,
+        configurable: true,
+        writable: true,
+      });
+    }
+    restoreGlobals(orig);
+    vi.doUnmock('../src/utils/geomHelper.js');
   });
 });

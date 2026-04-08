@@ -20,6 +20,8 @@ const getFeatureMemoKey = (feature) => {
  * @property {number} [cacheSize] Maximum cache size for tile pieces and labels.
  * @property {string} [units] Units for area calculations, e.g. 'meters'.
  * @property {number} [debugLevel] Debug verbosity level for PowerLogger output (0..3).
+ * @property {number} [gatherTimeout] Timeout in milliseconds for gather worker responses.
+ * @property {number} [mapFallbackCooldown] Minimum milliseconds between fallback map-wide queries.
  * @property {number} [gatherPoolSize] Number of gather worker threads.
  * @property {Function} [tileWorkerSource] Inline worker factory for tile processing.
  * @property {Function} [gatherWorkerSource] Inline worker factory for gather processing.
@@ -40,13 +42,18 @@ export default class TileManager {
     sourceLayer,
     fid = 'id',
     tileSize = 512,
-    tolerance = 0.00001,
+    tolerance = 0.000001,
     cacheSize = 5000,
     units = 'meters',
     postDelay = 0,
-    debugLevel = 0,
+    debugLevel = null,
+    debuglevel = null,
     tilePoolSize = 6,
     gatherPoolSize = 4,
+    gatherTimeout = 60000,
+    mapFallbackCooldown = 150,
+    tileTimeout = null,
+    tileMaxRetries = 1,
     tileWorkerSource = null,
     gatherWorkerSource = null,
   }) {
@@ -57,13 +64,31 @@ export default class TileManager {
     this.tileSize = tileSize;
     this.tolerance = tolerance;
     this.units = units;
+    this.gatherPoolSize = Math.max(1, Number.isFinite(Number(gatherPoolSize)) ? Math.floor(Number(gatherPoolSize)) : 1);
     this.postDelay = Number.isFinite(Number(postDelay)) ? Math.max(0, Number(postDelay)) : 0;
-    this.debugLevel = Number.isFinite(Number(debugLevel))
-      ? Math.max(0, Math.min(3, Math.floor(Number(debugLevel))))
+    const rawDebugLevel = debugLevel != null ? debugLevel : debuglevel;
+    this.debugLevel = Number.isFinite(Number(rawDebugLevel))
+      ? Math.max(0, Math.min(3, Math.floor(Number(rawDebugLevel))))
       : 0;
-
+    this.gatherTimeout = Number.isFinite(Number(gatherTimeout))
+      ? Math.max(0, Number(gatherTimeout))
+      : 30000;
+    this.tileTimeout = Number.isFinite(Number(tileTimeout))
+      ? Math.max(0, Number(tileTimeout))
+      : this.gatherTimeout;
+    this.tileMaxRetries = Number.isFinite(Number(tileMaxRetries))
+      ? Math.max(0, Math.floor(Number(tileMaxRetries)))
+      : 1;
+    this.mapFallbackCooldown = Number.isFinite(Number(mapFallbackCooldown))
+      ? Math.max(0, Number(mapFallbackCooldown))
+      : 150;
+    this._lastMapFallbackAt = 0;
+    this._lastMapFallbackUnique = null;
     this._sourceLoaded = false;
     this._pendingTiles = new Set();
+    this._tilePendingMeta = new Map();
+    this._tileCorrelationSeq = 0;
+    this._tileTimeoutHandle = null;
     this._tileQueue = new PowerQueue(32);
     this._tileDrainScheduled = false;
     this._tileDrainTimeout = null;
@@ -71,8 +96,21 @@ export default class TileManager {
       this._tileDrainScheduled = false;
       this._drainTileQueue();
     });
+    this._gatherRound = 0;
+    this._diffScheduler = new PowerScheduler(() => this._runDiffFlush());
     this._gatherScheduled = false;
     this._diffScheduled = false;
+    this._diffFlushInProgress = false;
+    this._diffFlushQueued = false;
+    this._diffFlushQueuedGatherRound = 0;
+    this._currentFlushGatherRound = 0;
+    this._diffFlushQueuedTimestamp = 0;
+    this._currentFlushTimestamp = 0;
+    this._diffRetryHandle = null;
+    this._diffRetryCount = 0;
+    this._lastGatherRound = 0;
+    this._lastGatherTimestamp = 0;
+    this._pendingGatherRounds = new Map();
     this._diffAdd = new Map();
     this._diffRemove = new Set();
     this._bus = new PowerEventBus();
@@ -126,6 +164,7 @@ export default class TileManager {
       maxSize: tilePoolSize,
       taskQueue: true,
       lazy: false,
+      debugLevel: this.debugLevel,
     });
 
     this.gatherPool = new PowerPool(gatherSource, {
@@ -134,18 +173,21 @@ export default class TileManager {
       maxSize: gatherPoolSize,
       taskQueue: true,
       lazy: false,
+      debugLevel: this.debugLevel,
     });
 
     this.tilePool.addEventListener('message', (e) => this._onTileMessage(e));
+    this.tilePool.addEventListener('error', () => this._expirePendingTiles(true));
+    this.tilePool.addEventListener('messageerror', () => this._expirePendingTiles(true));
     this.tilePool.addEventListener('idle', () => {
-      if (this._sourceLoaded) this._scheduleGather();
+      if (this._sourceLoaded && this._changedGroups.size > 0) this._scheduleGather();
     });
 
     this.gatherPool.addEventListener('message', (e) => this._onGatherMessage(e));
     this.gatherPool.addEventListener('idle', () => this._scheduleDiffFlush());
 
     this._bus.on('label', (collection) => this._collectLabelDiff(collection));
-    this._bus.on('commit', () => this._scheduleDiffFlush());
+    this._bus.on('commit', (commit) => this._scheduleDiffFlush(commit));
   }
 
   /**
@@ -155,26 +197,47 @@ export default class TileManager {
    */
   handleSourceData(event) {
     if (this._disposed || !event || event.sourceId !== this.source.id) return;
-    if (event.isSourceLoaded) this._sourceLoaded = true;
+    if (typeof event.isSourceLoaded === 'boolean') {
+      const wasSourceLoaded = this._sourceLoaded;
+      this._sourceLoaded = event.isSourceLoaded;
+      if (!wasSourceLoaded && this._sourceLoaded && this._changedGroups.size > 0) {
+        this._scheduleGather();
+      }
+    }
 
     const canonical = event.tile?.tileID?.canonical;
     if (!canonical) return;
 
-    const unique = `${canonical.z}|${canonical.x}|${canonical.y}`;
+    const tileUnique = `${canonical.z}|${canonical.x}|${canonical.y}`;
     let tileFeatures = [];
     const tileOptions = this.source.type === 'vector' ? { sourceLayer: this.sourceLayer } : {};
     const queryTileFeatures =
       typeof event.tile?.querySourceFeatures === 'function'
         ? (opts) => {
-            const features = [];
-            event.tile.querySourceFeatures(features, opts);
-            return features;
-          }
+          const features = [];
+          event.tile.querySourceFeatures(features, opts);
+          return features;
+        }
         : null;
     const queryMapFeatures =
       typeof this.map.querySourceFeatures === 'function'
         ? (opts) => this.map.querySourceFeatures(this.source.id, opts)
         : null;
+
+    const usingMapFallback = !queryTileFeatures && Boolean(queryMapFeatures);
+    let unique = tileUnique;
+    if (usingMapFallback) {
+      unique = `map|z${canonical.z}`;
+      const now = Date.now();
+      if (
+        this._lastMapFallbackUnique === unique &&
+        now - this._lastMapFallbackAt < this.mapFallbackCooldown
+      ) {
+        return;
+      }
+      this._lastMapFallbackUnique = unique;
+      this._lastMapFallbackAt = now;
+    }
 
     const queryResult = queryTileFeatures
       ? queryTileFeatures(tileOptions)
@@ -201,7 +264,10 @@ export default class TileManager {
 
     this._tileFingerprints.set(unique, fingerprint);
 
-    const tolerance = this.tolerance * Math.pow(10, -0.301 * canonical.z + 5.19);
+    // https://wiki.openstreetmap.org/wiki/Zoom_levels    
+    // Adjust simplification tolerance based on zoom level to balance detail and performance. 
+    const tolerance = Math.max(this.tolerance, Math.pow(10, -0.301 * canonical.z + 2.56) / this.tileSize);
+
     const payload = {
       collection: {
         type: 'FeatureCollection',
@@ -222,8 +288,17 @@ export default class TileManager {
       debugLevel: this.debugLevel,
     };
 
+    payload.correlationId = `${unique}:${++this._tileCorrelationSeq}`;
+
     this._pendingTiles.add(unique);
+    this._tilePendingMeta.set(unique, {
+      correlationId: payload.correlationId,
+      payload,
+      retries: 0,
+      deadline: Date.now() + Math.max(1, this.tileTimeout),
+    });
     this._tileQueue.push(payload);
+    this._schedulePendingTileTimeoutCheck();
     this._scheduleTileDrain();
   }
 
@@ -322,33 +397,87 @@ export default class TileManager {
   dispose() {
     this._disposed = true;
     this._tileScheduler.cancel();
+    this._diffScheduler.cancel();
     if (this._tileDrainTimeout) {
       clearTimeout(this._tileDrainTimeout);
       this._tileDrainTimeout = null;
     }
+    if (this._tileTimeoutHandle) {
+      clearTimeout(this._tileTimeoutHandle);
+      this._tileTimeoutHandle = null;
+    }
+    if (this._diffRetryHandle) {
+      clearTimeout(this._diffRetryHandle);
+      this._diffRetryHandle = null;
+    }
+    for (const timeoutId of this._pendingGatherRounds.values()) {
+      clearTimeout(timeoutId);
+    }
+    this._pendingGatherRounds.clear();
     this._tileDrainScheduled = false;
     this._gatherScheduled = false;
     this._diffScheduled = false;
     try {
       this.tilePool.shutdown();
-    } catch (e) {
+    } catch {
       /* ignore */
     }
     try {
       this.gatherPool.shutdown();
-    } catch (e) {
+    } catch {
       /* ignore */
     }
     this.piecesCache.clear();
     this.labelsCache.clear();
     this._tileFingerprints.clear();
     this._pendingTiles.clear();
+    this._tilePendingMeta.clear();
     this._tileQueue.clear();
     this._changedGroups.clear();
     this._tileGroups.clear();
     this._groupToTiles.clear();
     this._bus.clear();
     this.gjSource = null;
+  }
+
+  _schedulePendingTileTimeoutCheck() {
+    if (this._tileTimeoutHandle || this._tilePendingMeta.size === 0 || this.tileTimeout <= 0) return;
+    const delay = Math.max(25, Math.min(1000, Math.floor(this.tileTimeout / 2) || 250));
+    this._tileTimeoutHandle = setTimeout(() => {
+      this._tileTimeoutHandle = null;
+      this._expirePendingTiles(false);
+    }, delay);
+  }
+
+  _expirePendingTiles(force = false) {
+    if (this._disposed || this._tilePendingMeta.size === 0) return;
+    const now = Date.now();
+    let requeue = false;
+
+    for (const [unique, pending] of this._tilePendingMeta.entries()) {
+      if (!force && pending.deadline > now) continue;
+      if (pending.retries < this.tileMaxRetries) {
+        pending.retries += 1;
+        pending.deadline = now + Math.max(1, this.tileTimeout);
+        pending.correlationId = `${unique}:${++this._tileCorrelationSeq}`;
+        pending.payload = {
+          ...pending.payload,
+          correlationId: pending.correlationId,
+        };
+        this._tileQueue.push(pending.payload);
+        requeue = true;
+      } else {
+        this._tilePendingMeta.delete(unique);
+        this._pendingTiles.delete(unique);
+      }
+    }
+
+    if (requeue) {
+      this._scheduleTileDrain();
+    }
+    if (this._tilePendingMeta.size > 0) {
+      this._schedulePendingTileTimeoutCheck();
+    }
   }
 
   /**
@@ -396,8 +525,26 @@ export default class TileManager {
     const incoming = event.data;
     if (!incoming || incoming.type !== 'simplified') return;
 
-    const { unique, type, ...payload } = incoming;
-    this._pendingTiles.delete(unique);
+    const { unique, correlationId, ...payload } = incoming;
+    const pending = this._tilePendingMeta.get(unique);
+    if (pending) {
+      if (correlationId != null && pending.correlationId !== correlationId) {
+        return;
+      }
+      this._tilePendingMeta.delete(unique);
+      this._pendingTiles.delete(unique);
+    } else if (this._pendingTiles.has(unique)) {
+      this._pendingTiles.delete(unique);
+    } else if (correlationId != null) {
+      // Ignore stale retried responses after pending state was already cleared.
+      return;
+    }
+
+    if (this._tilePendingMeta.size === 0 && this._tileTimeoutHandle) {
+      clearTimeout(this._tileTimeoutHandle);
+      this._tileTimeoutHandle = null;
+    }
+
     this._removeTileGroups(unique);
     this.piecesCache.set(unique, payload);
     this._tileGroups.set(unique, new Set());
@@ -467,20 +614,38 @@ export default class TileManager {
 
     if (!pieces || !Object.keys(pieces).length) return;
 
-    const gatherResult = this.gatherPool.postMessage(
+    const gatherRound = ++this._gatherRound;
+    this._scheduleGatherTimeout(gatherRound);
+    this.gatherPool.postMessage(
       {
         pieces,
         tolerance: this.tolerance,
         unit: this.units,
         tileSize: this.tileSize,
+        gatherPoolSize: this.gatherPoolSize,
         debugLevel: this.debugLevel,
+        gatherRound,
       },
       undefined,
-      { zeroCopy: true, awaitResponse: true }
+      { zeroCopy: true }
     );
-    if (gatherResult && typeof gatherResult.then === 'function') {
-      gatherResult.catch(() => {});
-    }
+  }
+
+  _scheduleGatherTimeout(gatherRound) {
+    if (this.gatherTimeout <= 0) return;
+    const timeoutId = setTimeout(() => {
+      if (!this._pendingGatherRounds.has(gatherRound)) return;
+      this._pendingGatherRounds.delete(gatherRound);
+      this._scheduleDiffFlush({ gatherRound, timestamp: Date.now() });
+    }, this.gatherTimeout);
+    this._pendingGatherRounds.set(gatherRound, timeoutId);
+  }
+
+  _clearGatherTimeout(gatherRound) {
+    const timeoutId = this._pendingGatherRounds.get(gatherRound);
+    if (!timeoutId) return;
+    clearTimeout(timeoutId);
+    this._pendingGatherRounds.delete(gatherRound);
   }
 
   /**
@@ -493,12 +658,98 @@ export default class TileManager {
     const incoming = event.data;
     if (!incoming) return;
     if (incoming.type === 'commit') {
-      this._bus.emit('commit');
+      const gatherRound = Number.isFinite(Number(incoming.gatherRound)) ? Number(incoming.gatherRound) : 0;
+      const timestamp = Number.isFinite(Number(incoming.timestamp)) ? Number(incoming.timestamp) : Date.now();
+      if (gatherRound) this._clearGatherTimeout(gatherRound);
+      this._bus.emit('commit', { gatherRound, timestamp });
       return;
     }
     if (incoming.id != null) {
       this._bus.emit('label', incoming);
     }
+  }
+
+  _keepNonContained = (items) => {
+    const seqs = items.map((item) => item.split('-'));
+    const isSubsequence = (sub, full) => {
+      let idx = 0;
+      for (const value of full) {
+        if (value === sub[idx]) idx += 1;
+        if (idx === sub.length) return true;
+      }
+      return sub.length === 0;
+    };
+    return seqs
+      .filter(
+        (seq, i) =>
+          !seqs.some((other, j) => j !== i && other.length >= seq.length && isSubsequence(seq, other))
+      )
+      .map((seq) => seq.join('-'));
+  };
+
+  _filterRedundantDiffAdds(items) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    const byIndex = new Map();
+    let hasMemberParents = false;
+    let hasCompoundIndexes = false;
+
+    for (const feature of items) {
+      const index = feature?.properties?._index;
+      if (index) {
+        if (!hasCompoundIndexes && String(index).includes('-')) {
+          hasCompoundIndexes = true;
+        }
+        if (!hasMemberParents) {
+          const members = feature?.properties?._members;
+          if (Array.isArray(members) && members.length > 1) {
+            hasMemberParents = true;
+          }
+        }
+        byIndex.set(index, feature);
+      }
+    }
+
+    if (byIndex.size === 0) return [];
+    if (byIndex.size === 1) return [byIndex.values().next().value];
+
+    if (hasMemberParents) {
+      const suppressed = new Set();
+      for (const feature of byIndex.values()) {
+        const parentIndex = feature?.properties?._index;
+        const members = feature?.properties?._members;
+        if (!parentIndex || !Array.isArray(members) || members.length <= 1) continue;
+        for (const member of members) {
+          if (member !== parentIndex && byIndex.has(member)) {
+            suppressed.add(member);
+          }
+        }
+      }
+
+      if (suppressed.size > 0) {
+        const filtered = [];
+        for (const feature of byIndex.values()) {
+          if (!suppressed.has(feature?.properties?._index)) {
+            filtered.push(feature);
+          }
+        }
+        return filtered;
+      }
+    }
+
+    // Fast path: simple feature indexes do not participate in legacy token-containment logic.
+    if (!hasCompoundIndexes) {
+      return [...byIndex.values()];
+    }
+
+    const filteredIndexes = new Set(this._keepNonContained([...byIndex.keys()].sort()));
+    const filtered = [];
+    for (const [index, feature] of byIndex.entries()) {
+      if (filteredIndexes.has(index)) {
+        filtered.push(feature);
+      }
+    }
+    return filtered;
   }
 
   /**
@@ -508,8 +759,30 @@ export default class TileManager {
    * @returns {void}
    */
   _collectLabelDiff(collection) {
+    const gatherRound = Number.isFinite(Number(collection.gatherRound)) ? Number(collection.gatherRound) : 0;
+    const timestamp = Number.isFinite(Number(collection.timestamp)) ? Number(collection.timestamp) : 0;
+    if (gatherRound && gatherRound < this._lastGatherRound) return;
+    if (gatherRound && gatherRound > this._lastGatherRound) {
+      this._lastGatherRound = gatherRound;
+      this._lastGatherTimestamp = 0;
+    }
+    if (timestamp && timestamp > this._lastGatherTimestamp) {
+      this._lastGatherTimestamp = timestamp;
+    }
+
     const id = collection.id;
-    const features = Array.isArray(collection.features) ? collection.features : [];
+
+    let features = Array.isArray(collection.features) ? collection.features.slice() : [];
+    if (features.length > 1) {
+      features.sort((a, b) => {
+        const aIndex = a?.properties?._index;
+        const bIndex = b?.properties?._index;
+        if (aIndex === bIndex) return 0;
+        if (aIndex == null) return -1;
+        if (bIndex == null) return 1;
+        return String(aIndex).localeCompare(String(bIndex));
+      });
+    }
     if (this.labelsCache.hasEqual(id, features)) return;
 
     const existing = this.labelsCache.get(id);
@@ -526,6 +799,7 @@ export default class TileManager {
     });
 
     this.labelsCache.set(id, features);
+    this._scheduleDiffFlush({ gatherRound, timestamp });
   }
 
   /**
@@ -533,13 +807,97 @@ export default class TileManager {
    * @private
    * @returns {void}
    */
-  _scheduleDiffFlush() {
-    if (this._diffScheduled) return;
+  _scheduleDiffFlush({ gatherRound = 0, timestamp = 0 } = {}) {
+    if (gatherRound && gatherRound > this._lastGatherRound) {
+      this._lastGatherRound = gatherRound;
+      this._lastGatherTimestamp = 0;
+    }
+    if (timestamp && timestamp > this._lastGatherTimestamp) {
+      this._lastGatherTimestamp = timestamp;
+    }
+
+    if (
+      !this._diffFlushInProgress &&
+      !this._diffScheduled &&
+      this._diffAdd.size === 0 &&
+      this._diffRemove.size === 0
+    ) {
+      return;
+    }
+
+    if (!this._diffFlushInProgress && !this._diffScheduled && gatherRound && gatherRound < this._lastGatherRound) {
+      return;
+    }
+
+    if (this._diffFlushInProgress) {
+      if (gatherRound && gatherRound <= this._currentFlushGatherRound) {
+        return;
+      }
+      if (timestamp && timestamp <= this._currentFlushTimestamp) {
+        return;
+      }
+      this._diffFlushQueued = true;
+      if (gatherRound && gatherRound > this._diffFlushQueuedGatherRound) {
+        this._diffFlushQueuedGatherRound = gatherRound;
+      }
+      if (timestamp && timestamp > this._diffFlushQueuedTimestamp) {
+        this._diffFlushQueuedTimestamp = timestamp;
+      }
+      return;
+    }
+
+    if (this._diffScheduled) {
+      if (gatherRound && gatherRound > this._diffFlushQueuedGatherRound) {
+        this._diffFlushQueuedGatherRound = gatherRound;
+      }
+      if (timestamp && timestamp > this._diffFlushQueuedTimestamp) {
+        this._diffFlushQueuedTimestamp = timestamp;
+      }
+      return;
+    }
+
     this._diffScheduled = true;
-    queueMicrotask(() => {
-      this._diffScheduled = false;
-      this._flushDiffs();
-    });
+    this._diffScheduler.schedule();
+  }
+
+  async _runDiffFlush() {
+    if (!this._diffScheduled) return;
+    this._diffScheduled = false;
+    if (this._diffFlushInProgress) return;
+    this._diffFlushInProgress = true;
+    const flushGatherRound = Math.max(this._lastGatherRound, this._diffFlushQueuedGatherRound);
+    const flushTimestamp = Math.max(this._lastGatherTimestamp, this._diffFlushQueuedTimestamp, Date.now());
+    this._currentFlushGatherRound = flushGatherRound;
+    this._currentFlushTimestamp = flushTimestamp;
+    const queuedGatherRound = this._diffFlushQueuedGatherRound;
+    const queuedTimestamp = this._diffFlushQueuedTimestamp;
+    this._diffFlushQueuedGatherRound = 0;
+    this._diffFlushQueuedTimestamp = 0;
+    let flushed = true;
+    try {
+      flushed = await this._flushDiffs();
+    } finally {
+      this._diffFlushInProgress = false;
+      this._currentFlushGatherRound = 0;
+      this._currentFlushTimestamp = 0;
+      if (!flushed) {
+        this._scheduleDiffRetry();
+      }
+      if (this._diffFlushQueued) {
+        this._diffFlushQueued = false;
+        this._scheduleDiffFlush({ gatherRound: queuedGatherRound, timestamp: queuedTimestamp });
+      }
+    }
+  }
+
+  _scheduleDiffRetry() {
+    if (this._disposed || this._diffRetryHandle || (this._diffAdd.size === 0 && this._diffRemove.size === 0)) return;
+    const delay = Math.min(1000, Math.max(25, 25 * Math.pow(2, this._diffRetryCount)));
+    this._diffRetryCount += 1;
+    this._diffRetryHandle = setTimeout(() => {
+      this._diffRetryHandle = null;
+      this._scheduleDiffFlush({ gatherRound: this._lastGatherRound, timestamp: Date.now() });
+    }, delay);
   }
 
   /**
@@ -547,13 +905,59 @@ export default class TileManager {
    * @private
    * @returns {void}
    */
-  _flushDiffs() {
-    if (this._disposed || !this.gjSource || (this._diffAdd.size === 0 && this._diffRemove.size === 0)) return;
-    const add = [...this._diffAdd.values()];
-    const remove = [...this._diffRemove];
-    this._diffAdd.clear();
-    this._diffRemove.clear();
-    this.gjSource.updateData({ add, remove });
+  async _flushDiffs() {
+    if (this._disposed || !this.gjSource || (this._diffAdd.size === 0 && this._diffRemove.size === 0)) return true;
+    const addEntries = this._diffAdd.size > 0 ? [...this._diffAdd.entries()] : [];
+    let add = [];
+    if (addEntries.length === 1) {
+      add = [addEntries[0][1]];
+    } else if (addEntries.length > 1) {
+      const addRaw = addEntries.map(([, feature]) => feature);
+      add = this._filterRedundantDiffAdds(addRaw);
+    }
+    const removeSnapshot = this._diffRemove.size > 0 ? [...this._diffRemove] : [];
+    let remove = null;
+
+    if (removeSnapshot.length > 0) {
+      if (add.length === 0) {
+        remove = removeSnapshot;
+      } else {
+        const addIndexes = new Set();
+        for (const feature of add) {
+          const index = feature?.properties?._index;
+          if (index) addIndexes.add(index);
+        }
+
+        remove = [];
+        for (const index of removeSnapshot) {
+          if (!addIndexes.has(index)) {
+            remove.push(index);
+          }
+        }
+      }
+    }
+
+    try {
+      await this.gjSource.updateData({ add, remove: remove || [] });
+    } catch {
+      return false;
+    }
+
+    for (const [index, feature] of addEntries) {
+      if (!index) continue;
+      if (this._diffAdd.get(index) === feature) {
+        this._diffAdd.delete(index);
+      }
+    }
+    for (const index of removeSnapshot) {
+      this._diffRemove.delete(index);
+    }
+    this._diffRetryCount = 0;
+    if (this._diffRetryHandle) {
+      clearTimeout(this._diffRetryHandle);
+      this._diffRetryHandle = null;
+    }
+    return true;
   }
 
 }

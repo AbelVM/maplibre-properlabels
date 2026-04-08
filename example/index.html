@@ -159,6 +159,10 @@
         #info label {
             pointer-events: all !important;
         }
+        #area-value {
+            display: inline-block;
+            min-width: 5.5rem;
+        }
     </style>
 </head>
 
@@ -179,7 +183,7 @@
             <li><span class="label-sw red" aria-hidden="true">Label</span> <label><input type="radio" name="label"
                         id="red" value="red_checkbox" checked />The proper labels</label></li>
             <li><label>
-                    Area filter (<span id="area-value">0</span> km²)
+                    Area filter <span id="area-value">(0 km²)</span>
                     <input id="slider" type="range" min="0" max="100" value="0" />
                 </label></li>
             <!--  <li><span class="swatch blue" aria-hidden="true"></span> Not clipped countries</li>
@@ -238,6 +242,10 @@
             center: [-1.8185423452185887, 45.70324604208017],
             zoom: 5
         });
+        const popup = new maplibregl.Popup({
+            closeButton: false,
+            closeOnClick: false
+        }).trackPointer();
 
         window.map = map;
 
@@ -247,7 +255,7 @@
                 source: 'demotiles',
                 sourceLayer: 'countries',
                 fid: 'fid',
-                debug: true
+                debugLevel: 3
             });
             map.addLayer({
                 id: 'countries-labels-proper',
@@ -264,6 +272,21 @@
                     'text-halo-color': '#ffffff',
                     'text-halo-width': 1
                 }
+            });
+
+            currentlabel = null;
+            map.on('mousemove', 'countries-labels-proper', (e) => {
+                const label = e.features[0].properties._index;
+                if (currentlabel !== label) {
+                    currentlabel = label;
+                    map.getCanvas().style.cursor = 'pointer';
+                    popup.setHTML(label).addTo(map);
+                }
+            });
+
+            map.on('mouseleave', 'countries-labels-proper', () => {
+                map.getCanvas().style.cursor = '';
+                popup.remove();
             });
         });
 
@@ -295,7 +318,7 @@
         });
         filter.addEventListener('change', e => {
             const val = logslider(e.target.value, 2000, 1.71e13);
-            document.querySelector('#area-value').textContent = (val / 1e6).toExponential(2);
+            document.querySelector('#area-value').textContent = `(${(val / 1e6).toExponential(2)} km²)`;
             map.setFilter('countries-labels-proper', ['>', ['get', '_area'], val]);
         });
 

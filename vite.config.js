@@ -17,7 +17,7 @@ export default defineConfig({
       },
     },
     assetsInlineLimit: 0,
-    minify: 'terser',
+/*     minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: true,
@@ -26,6 +26,6 @@ export default defineConfig({
       format: {
         comments: false
       }
-    }
+    } */
   },
 });

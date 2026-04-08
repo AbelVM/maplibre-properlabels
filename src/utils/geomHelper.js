@@ -4,10 +4,11 @@
  */
 import polylabel from 'polylabel';
 import { area } from '@turf/area';
+import { simplify } from '@turf/simplify';
 import { PowerLogger, PowerMemoizer } from 'performance-helpers';
 export { union } from '@turf/union';
 export { flatten } from '@turf/flatten';
-export { simplify } from '@turf/simplify';
+export { lightspeedPolygonComponents } from './geomHelper_intersectiongraph.js';
 
 const featureMemoId = new WeakMap();
 let nextFeatureMemoId = 0;
@@ -228,6 +229,48 @@ export const polygonArea = (feature, units) => {
     return 0;
   }
 };
+
+/**
+ * Simplify a GeoJSON Feature only when its geometry exceeds the given vertex threshold.
+ * @param {Object} feature GeoJSON Feature
+ * @param {number} threshold Maximum number of coordinate positions before simplification is applied
+ * @param {{tolerance?: number, highQuality?: boolean}} [opts]
+ * @returns {Object}
+ */
+const _simplifyFeatureIfExceeds = (feature, threshold, opts = {}) => {
+  if (
+    !feature ||
+    typeof feature !== 'object' ||
+    feature.type !== 'Feature' ||
+    !feature.geometry ||
+    !Number.isFinite(threshold) ||
+    threshold < 0
+  ) {
+    return feature;
+  }
+
+  const vertexCount = countGeoJSONPoints(feature.geometry, { unique: false });
+  if (vertexCount <= threshold) return feature;
+
+  const { tolerance = 1e-6, highQuality = false } = opts;
+  try {
+    return simplify(structuredClone(feature), { tolerance, highQuality, mutate: true });
+  } catch (err) {
+    geomLogger.error('Error simplifying feature', err);
+    return feature;
+  }
+};
+
+export const simplifyFeatureIfExceeds = new PowerMemoizer(
+  (feature, threshold, opts = {}) => _simplifyFeatureIfExceeds(feature, threshold, opts),
+  {
+    keyResolver: (feature, threshold, opts = {}) => {
+      const tolerance = Number(opts.tolerance) || 1e-6;
+      const highQuality = Boolean(opts.highQuality);
+      return `${getFeatureMemoKey(feature)}|${threshold}|${tolerance}|${highQuality}`;
+    },
+  }
+);
 
 /**
  * Count coordinate positions in any GeoJSON object.
