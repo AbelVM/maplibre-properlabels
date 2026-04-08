@@ -51,6 +51,7 @@ describe('Prototype ProperLabels idempotency', () => {
       getSource: vi.fn((id) => (id === 'proto-src' ? source : mapStub._sources[id])),
       setTransformRequest: vi.fn(),
       on: vi.fn(),
+      off: vi.fn(),
       refreshTiles: vi.fn(),
       querySourceFeatures: vi.fn(() => []),
     };
@@ -75,6 +76,7 @@ describe('Prototype ProperLabels idempotency', () => {
       getSource: vi.fn((id) => (id === 'proto-src-2' ? source : mapStub._sources[id])),
       setTransformRequest: vi.fn(),
       on: vi.fn(),
+      off: vi.fn(),
       refreshTiles: vi.fn(),
       querySourceFeatures: vi.fn(() => []),
     };

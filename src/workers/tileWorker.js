@@ -26,9 +26,12 @@ _root.onmessage = (e) => {
   const groupedMap = new Map();
   incoming.collection.features.forEach((f) => {
     const k = f.id;
-    const arr = groupedMap.get(k) || [];
+    let arr = groupedMap.get(k);
+    if (!arr) {
+      arr = [];
+      groupedMap.set(k, arr);
+    }
     arr.push(f);
-    groupedMap.set(k, arr);
   });
 
   let size = 0;

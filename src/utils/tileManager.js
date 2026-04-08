@@ -1,13 +1,4 @@
-import { PowerCache, PowerEventBus, PowerMemoizer, PowerPool, PowerQueue, PowerScheduler } from 'performance-helpers';
-
-const featureMemoId = new WeakMap();
-let nextFeatureMemoId = 0;
-const getFeatureMemoKey = (feature) => {
-  if (!featureMemoId.has(feature)) {
-    featureMemoId.set(feature, String(nextFeatureMemoId++));
-  }
-  return featureMemoId.get(feature);
-};
+import { PowerCache, PowerEventBus, PowerPool, PowerQueue, PowerScheduler } from 'performance-helpers';
 
 /**
  * @typedef {Object} TileManagerOptions
@@ -138,17 +129,6 @@ export default class TileManager {
       },
     });
 
-    this._computeTileFingerprintMemo = new PowerMemoizer(
-      (features) => this._computeTileFingerprintBody(features),
-      {
-        cacheOptions: { maxEntries: cacheSize },
-        keyResolver: (features) =>
-          Array.isArray(features)
-            ? features.map((feature) => getFeatureMemoKey(feature)).join('|')
-            : String(features),
-      }
-    );
-
     this.labelsCache = new PowerCache({
       maxEntries: cacheSize,
       maxWeight: cacheSize * 5000,
@@ -188,6 +168,10 @@ export default class TileManager {
 
     this._bus.on('label', (collection) => this._collectLabelDiff(collection));
     this._bus.on('commit', (commit) => this._scheduleDiffFlush(commit));
+
+    this._activeZoom = null;
+    this._onZoomEnd = () => this._purgeStaleTiles();
+    this.map.on('zoomend', this._onZoomEnd);
   }
 
   /**
@@ -309,7 +293,7 @@ export default class TileManager {
    * @returns {string}
    */
   _computeTileFingerprint(features) {
-    return this._computeTileFingerprintMemo(features);
+    return this._computeTileFingerprintBody(features);
   }
 
   _computeTileFingerprintBody(features) {
@@ -333,8 +317,7 @@ export default class TileManager {
       update(geom?.type || 'none');
       update(coordCount);
       if (feature.properties && typeof feature.properties === 'object') {
-        const keys = Object.keys(feature.properties).sort();
-        for (const key of keys) {
+        for (const key of Object.keys(feature.properties)) {
           update(key);
           update(':');
           update(this._serializePropertyValue(feature.properties[key]));
@@ -355,6 +338,56 @@ export default class TileManager {
       return count;
     }
     return coords.length;
+  }
+
+  /**
+   * Extract the integer zoom level from a tile unique key ("z|x|y" or "map|zN").
+   * @private
+   * @param {string} key
+   * @returns {number|null}
+   */
+  _getTileZoom(key) {
+    if (typeof key !== 'string') return null;
+    if (key.startsWith('map|z')) {
+      const z = Number(key.slice(5));
+      return Number.isFinite(z) ? z : null;
+    }
+    const sep = key.indexOf('|');
+    if (sep < 0) return null;
+    const z = Number(key.slice(0, sep));
+    return Number.isFinite(z) ? z : null;
+  }
+
+  /**
+   * Remove cached tiles and label features whose zoom level no longer matches
+   * the current map zoom. Called on `zoomend` to clean up stale labels.
+   * @private
+   * @returns {void}
+   */
+  _purgeStaleTiles() {
+    if (this._disposed) return;
+    const currentZoom = Math.floor(this.map.getZoom());
+    if (this._activeZoom === currentZoom) return;
+    this._activeZoom = currentZoom;
+
+    // Queue removal of label features whose tile zoom no longer matches.
+    // Caches are intentionally kept intact so returning to a previous zoom
+    // can reuse already-processed data without reprocessing.
+    // No flush is triggered here — removals will be applied together with the
+    // incoming new-zoom labels on the next natural diff flush, keeping the
+    // transition smooth.
+    for (const [, features] of this.labelsCache.entries('LRU')) {
+      if (!Array.isArray(features)) continue;
+      for (const feature of features) {
+        const tile = feature?.properties?._tile;
+        if (!tile) continue;
+        const z = this._getTileZoom(tile);
+        if (z !== null && z !== currentZoom) {
+          const index = feature?.properties?._index;
+          if (index) this._diffRemove.add(index);
+        }
+      }
+    }
   }
 
   _removeTileGroups(unique) {
@@ -396,6 +429,10 @@ export default class TileManager {
    */
   dispose() {
     this._disposed = true;
+    if (this._onZoomEnd && this.map) {
+      this.map.off('zoomend', this._onZoomEnd);
+      this._onZoomEnd = null;
+    }
     this._tileScheduler.cancel();
     this._diffScheduler.cancel();
     if (this._tileDrainTimeout) {
@@ -557,7 +594,7 @@ export default class TileManager {
       this._changedGroups.add(groupId);
     }
 
-    if (this._sourceLoaded) this._scheduleGather();
+    if (this._sourceLoaded && this._pendingTiles.size === 0) this._scheduleGather();
   }
 
   /**

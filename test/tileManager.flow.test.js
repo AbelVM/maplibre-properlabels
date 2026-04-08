@@ -42,11 +42,17 @@ const polygonFeature = {
   properties: { id: 'feature-1' },
 };
 
-const makeSources = ({ postDelay = 0, gatherTimeout = 60000, tileTimeout = null, tileMaxRetries = 1 } = {}) => {
+const makeMap = (zoom = 0) => ({
+  on: vi.fn(),
+  off: vi.fn(),
+  getZoom: vi.fn(() => zoom),
+});
+
+const makeSources = ({ postDelay = 0, gatherTimeout = 60000, tileTimeout = null, tileMaxRetries = 1, map } = {}) => {
   const tileWorkerSource = FakeWorker;
   const gatherWorkerSource = FakeWorker;
   const manager = new TileManager({
-    map: {},
+    map: map ?? makeMap(),
     source: { id: 'test-source', type: 'vector', tileSize: 512, maxzoom: 14 },
     sourceLayer: 'layer-1',
     fid: 'id',
@@ -89,7 +95,7 @@ describe('TileManager worker flow', () => {
 
   it('accepts debuglevel alias when constructing the manager', () => {
     const manager = new TileManager({
-      map: {},
+      map: makeMap(),
       source: { id: 'test-source', type: 'vector', tileSize: 512, maxzoom: 14 },
       sourceLayer: 'layer-1',
       fid: 'id',
@@ -381,7 +387,7 @@ describe('TileManager worker flow', () => {
     expect(changed).not.toBe(fingerprint1);
   });
 
-  it('memoizes fingerprint computation for repeated feature payloads', () => {
+  it('produces stable fingerprints for repeated feature payloads without memoization', () => {
     const manager = makeSources();
     const spy = vi.spyOn(manager, '_computeTileFingerprintBody');
     const features = [polygonFeature];
@@ -390,7 +396,9 @@ describe('TileManager worker flow', () => {
     const fingerprint2 = manager._computeTileFingerprint(features);
 
     expect(fingerprint1).toBe(fingerprint2);
-    expect(spy).toHaveBeenCalledTimes(1);
+    // Body is called once per invocation — memoization was removed because
+    // querySourceFeatures always returns new object references (WeakMap keys never hit).
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('reprocesses a cached tile when the fingerprint is missing', async () => {

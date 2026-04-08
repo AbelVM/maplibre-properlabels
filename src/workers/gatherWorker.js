@@ -3,7 +3,7 @@
  * label-friendly points to return to the main thread.
  */
 import { o2u8, u82o, PowerLogger } from 'performance-helpers';
-import { safePolylabel, polygonArea, setGeomWorkerDebugLevel, lightspeedPolygonComponents, union, flatten, simplifyFeatureIfExceeds } from '../utils/geomHelper.js';
+import { safePolylabel, polygonArea, setGeomWorkerDebugLevel, lightspeedPolygonComponents, union, flatten, simplifyFeatureIfExceeds, snapPolygonFeature } from '../utils/geomHelper.js';
 
 const getWorkerScope = () =>
   typeof self !== 'undefined' ? self : typeof globalThis !== 'undefined' ? globalThis : {};
@@ -11,32 +11,21 @@ const getWorkerScope = () =>
 const _root = getWorkerScope();
 const logger = new PowerLogger(0, { name: 'properlabels-gather' });
 
+// Resolve the postMessage target once at module init to avoid repeated runtime checks.
+const _poster = (() => {
+  if (typeof self !== 'undefined' && typeof self.postMessage === 'function') return self;
+  if (typeof globalThis !== 'undefined' && typeof globalThis.postMessage === 'function') return globalThis;
+  return null;
+})();
+
 const postToMainThread = (message, transfer) => {
+  if (!_poster) return false;
   try {
-    if (_root && typeof _root.postMessage === 'function') {
-      _root.postMessage(message, transfer);
-      return true;
-    }
+    _poster.postMessage(message, transfer);
+    return true;
   } catch {
-    /* ignore */
+    return false;
   }
-  try {
-    if (typeof self !== 'undefined' && self && typeof self.postMessage === 'function') {
-      self.postMessage(message, transfer);
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (typeof globalThis !== 'undefined' && globalThis && typeof globalThis.postMessage === 'function') {
-      globalThis.postMessage(message, transfer);
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  return false;
 };
 
 const normalizeCollection = (collection) => {
@@ -148,11 +137,11 @@ _root.onmessage = async (e) => {
       if (id === 'size' || id === 'unique' || id === 'type') continue;
       const featureAcc = collectPolygonFeatures(group);
 
-      // flatten
-      let collection = normalizeCollection({
+      // featureAcc contains only Polygon features — no MultiPolygon normalization needed here.
+      let collection = {
         type: 'FeatureCollection',
         features: featureAcc,
-      });
+      };
 
       // clipped / unclipped split
       let clippedFeatures = [];
@@ -180,13 +169,56 @@ _root.onmessage = async (e) => {
             unclippedFeatures.push(component[0]);
             continue;
           }
+
+
+          /*           
+                    // Snap coordinates to the tolerance grid before union to collapse nearly-coincident
+                    // vertices from tile-edge clipping that cause polygon-clipping ring topology errors.
+                    const snappedComponent = component
+                      .map((f) => {
+                         const z = getZoomFromIndex(f.properties?._index);
+                        // https://wiki.openstreetmap.org/wiki/Zoom_levels    
+                        // Adjust simplification tolerance based on zoom level to balance detail and performance. 
+                        const t = Math.max(tolerance, Math.pow(10, -0.301 * z + 2.56) / tileSize)
+                        return snapPolygonFeature(f, t)
+                      })
+                      .filter(Boolean);
+                    if (snappedComponent.length === 0) continue;
+                    if (snappedComponent.length === 1) {
+                      unclippedFeatures.push(snappedComponent[0]);
+                      continue;
+                    }
+          
+           */
+
           const memberIndexes = component.map((f) => f.properties._index).sort();
           const cprops = {
             ...component[0].properties,
             _index: memberIndexes.join('-'),
             _members: memberIndexes,
           };
-          const unioned_component = union({ type: 'FeatureCollection', features: component });
+          let unioned_component;
+          try {
+            unioned_component = union({ type: 'FeatureCollection', features: component });
+          } catch (unionErr) {
+            logger.warn(
+              `Union failed for group ${id} (${component.length} members): ${unionErr && unionErr.message}. Treating members individually.`
+            );
+            const snappedComponent = component.map((f) => {
+              const z = getZoomFromIndex(f.properties?._index);
+              // https://wiki.openstreetmap.org/wiki/Zoom_levels    
+              // Adjust simplification tolerance based on zoom level to balance detail and performance. 
+              const t = Math.max(tolerance, Math.pow(10, -0.301 * z + 2.56) / tileSize)
+              return snapPolygonFeature(f, t)
+            }).filter(Boolean);
+            if (snappedComponent.length === 0) continue;
+            if (snappedComponent.length === 1) {
+              unclippedFeatures.push(snappedComponent[0]);
+              continue;
+            }
+            unioned_component = union({ type: 'FeatureCollection', features: snappedComponent });
+          }
+          if (!unioned_component || !unioned_component.geometry) continue;
           unioned.push({
             type: 'Feature',
             geometry: unioned_component.geometry,

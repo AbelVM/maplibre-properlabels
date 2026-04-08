@@ -254,7 +254,7 @@ const _simplifyFeatureIfExceeds = (feature, threshold, opts = {}) => {
 
   const { tolerance = 1e-6, highQuality = false } = opts;
   try {
-    return simplify(structuredClone(feature), { tolerance, highQuality, mutate: true });
+    return simplify(feature, { tolerance, highQuality, mutate: true });
   } catch (err) {
     geomLogger.error('Error simplifying feature', err);
     return feature;
@@ -283,3 +283,75 @@ export function countGeoJSONPoints(obj, opts = {}) {
   if (!obj || typeof obj !== 'object') return 0;
   return countGeoJSON(obj, unique);
 }
+
+/**
+ * Snap and clean a single polygon ring to a coordinate grid derived from tolerance.
+ * Consecutive duplicate vertices (after snapping) are removed, and the ring is
+ * re-closed. Returns null when fewer than 3 unique vertices remain.
+ * @param {Array<Array<number>>} ring
+ * @param {number} factor  pre-computed 10^precision multiplier
+ * @returns {Array<Array<number>>|null}
+ */
+const cleanRing = (ring, factor) => {
+  if (!Array.isArray(ring) || ring.length < 4) return null;
+
+  // Snap each coordinate to the grid and remove consecutive duplicates in one pass.
+  const first = ring[0];
+  const x0 = Math.round(first[0] * factor) / factor;
+  const y0 = Math.round(first[1] * factor) / factor;
+  const out = [[x0, y0]];
+
+  for (let i = 1; i < ring.length - 1; i += 1) {
+    const p = ring[i];
+    const x = Math.round(p[0] * factor) / factor;
+    const y = Math.round(p[1] * factor) / factor;
+    const prev = out[out.length - 1];
+    if (x !== prev[0] || y !== prev[1]) {
+      out.push([x, y]);
+    }
+  }
+
+  // Need at least 3 distinct vertices before closing.
+  if (out.length < 3) return null;
+
+  // Remove the last vertex if it duplicates the first after snapping, then re-close.
+  const last = out[out.length - 1];
+  if (last[0] === x0 && last[1] === y0) out.pop();
+  if (out.length < 3) return null;
+
+  out.push([x0, y0]);
+  return out;
+};
+
+/**
+ * Snap all coordinates of a Polygon feature to a grid derived from `tolerance`,
+ * collapsing vertices closer than tolerance and removing degenerate rings.
+ *
+ * This is a pre-processing step before calling `@turf/union` to avoid the
+ * `polygon-clipping` "Unable to complete output ring" error caused by
+ * nearly-coincident or self-touching vertices from tile-edge clipping.
+ *
+ * @param {Object} feature GeoJSON Polygon Feature
+ * @param {number} tolerance Simplification tolerance (e.g. 1e-5). Used to derive snap precision.
+ * @returns {Object|null} Cleaned feature, or null if no valid rings remain.
+ */
+export const snapPolygonFeature = (feature, tolerance) => {
+  if (!feature || feature.geometry?.type !== 'Polygon') return feature;
+  const safeTol = Math.max(tolerance, 1e-10);
+  const precision = Math.max(0, Math.min(10, Math.round(-Math.log10(safeTol))));
+  const factor = Math.pow(10, precision);
+
+  const coords = feature.geometry.coordinates;
+  if (!Array.isArray(coords)) return null;
+
+  const cleanedRings = [];
+  for (let r = 0; r < coords.length; r += 1) {
+    const cleaned = cleanRing(coords[r], factor);
+    if (cleaned) cleanedRings.push(cleaned);
+    // If the outer ring is degenerate the whole feature is invalid.
+    else if (r === 0) return null;
+  }
+
+  if (cleanedRings.length === 0) return null;
+  return { ...feature, geometry: { type: 'Polygon', coordinates: cleanedRings } };
+};
