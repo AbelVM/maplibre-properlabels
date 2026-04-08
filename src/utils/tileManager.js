@@ -110,6 +110,11 @@ export default class TileManager {
     this._tileGroups = new Map();
     this._groupToTiles = new Map();
 
+    // Operational safety limits to avoid sending extremely large batches
+    // to worker pools which can block the main thread and spike memory use.
+    this._maxTileBatch = 128; // max number of tile tasks per worker batch
+    this._maxGatherPieces = 200; // max number of piece entries to include in a gather
+
     this.piecesCache = new PowerCache({
       maxEntries: cacheSize,
       maxWeight: cacheSize * 5000,
@@ -544,11 +549,29 @@ export default class TileManager {
   _drainTileQueue() {
     const items = [];
     let task;
-    while ((task = this._tileQueue.shift()) !== undefined) {
+    const BATCH_MAX = Number.isFinite(Number(this._maxTileBatch))
+      ? Math.max(1, Math.floor(Number(this._maxTileBatch)))
+      : 128;
+    let count = 0;
+    while (count < BATCH_MAX && (task = this._tileQueue.shift()) !== undefined) {
       items.push({ message: task });
+      count += 1;
     }
     if (items.length > 0) {
-      this.tilePool.postMessageBatch(items, { zeroCopy: true });
+      try {
+        this.tilePool.postMessageBatch(items, { zeroCopy: true });
+      } catch (err) {
+        // On failure, expire pending tiles so they may be retried or cleaned up.
+        try {
+          this._expirePendingTiles(true);
+        } catch (e) {
+          /* best-effort */
+        }
+      }
+      // If we drained a full batch, schedule another drain to continue processing remaining tasks.
+      if (count >= BATCH_MAX) {
+        this._scheduleTileDrain();
+      }
     }
   }
 
@@ -619,13 +642,21 @@ export default class TileManager {
   _dispatchGather() {
     if (this._disposed) return;
 
+    // Only dispatch pieces that match the currently active zoom level.
+    const currentZoom = Number.isFinite(this._activeZoom)
+      ? this._activeZoom
+      : Math.floor(this.map.getZoom());
+
     let pieces;
     if (this._changedGroups.size > 0) {
       const relevantTiles = new Set();
       for (const groupId of this._changedGroups) {
         const tileSet = this._groupToTiles.get(groupId);
         if (tileSet) {
-          for (const unique of tileSet) relevantTiles.add(unique);
+          for (const unique of tileSet) {
+            const z = this._getTileZoom(unique);
+            if (z === currentZoom) relevantTiles.add(unique);
+          }
         }
       }
 
@@ -646,26 +677,47 @@ export default class TileManager {
     } else {
       const entries = Array.from(this.piecesCache.entries('LRU'));
       if (!entries.length) return;
-      pieces = Object.fromEntries(entries);
+      const MAX_PIECES = Number.isFinite(Number(this._maxGatherPieces))
+        ? Math.max(1, Math.floor(Number(this._maxGatherPieces)))
+        : 200;
+      // Limit and filter by zoom
+      const filtered = [];
+      for (let i = 0; i < entries.length && filtered.length < MAX_PIECES; i += 1) {
+        const [unique, payload] = entries[i];
+        const z = this._getTileZoom(unique);
+        if (z === currentZoom) filtered.push([unique, payload]);
+      }
+      if (filtered.length === 0) return;
+      pieces = Object.fromEntries(filtered);
     }
 
     if (!pieces || !Object.keys(pieces).length) return;
 
     const gatherRound = ++this._gatherRound;
     this._scheduleGatherTimeout(gatherRound);
-    this.gatherPool.postMessage(
-      {
-        pieces,
-        tolerance: this.tolerance,
-        unit: this.units,
-        tileSize: this.tileSize,
-        gatherPoolSize: this.gatherPoolSize,
-        debugLevel: this.debugLevel,
-        gatherRound,
-      },
-      undefined,
-      { zeroCopy: true }
-    );
+    try {
+      this.gatherPool.postMessage(
+        {
+          pieces,
+          tolerance: this.tolerance,
+          unit: this.units,
+          tileSize: this.tileSize,
+          gatherPoolSize: this.gatherPoolSize,
+          debugLevel: this.debugLevel,
+          gatherRound,
+        },
+        undefined,
+        { zeroCopy: true }
+      );
+    } catch (err) {
+      // If posting to the gather pool failed (rare), retry the gather shortly.
+      try {
+        setTimeout(() => this._scheduleGather(), 50);
+      } catch (e) {
+        /* best-effort */
+      }
+      return;
+    }
   }
 
   _scheduleGatherTimeout(gatherRound) {
@@ -707,21 +759,112 @@ export default class TileManager {
   }
 
   _keepNonContained = (items) => {
-    const seqs = items.map((item) => item.split('-'));
-    const isSubsequence = (sub, full) => {
-      let idx = 0;
-      for (const value of full) {
-        if (value === sub[idx]) idx += 1;
-        if (idx === sub.length) return true;
+    // Optimized non-contained filter using an inverted index to reduce
+    // pairwise subsequence comparisons. Preserves original semantics
+    // (items are tokenized by '-') and returns the surviving items
+    // joined again with '-'.
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    const seqs = items.map((item) => (typeof item === 'string' ? item.split('-') : []));
+    const n = seqs.length;
+    if (n <= 1) return items.slice();
+
+    // Build inverted index: token -> Set of sequence indices that contain the token
+    const tokenIndex = new Map();
+    for (let i = 0; i < n; i += 1) {
+      const seq = seqs[i];
+      const seen = new Set();
+      for (let k = 0; k < seq.length; k += 1) {
+        const tok = seq[k];
+        if (seen.has(tok)) continue; // avoid duplicate postings per sequence
+        seen.add(tok);
+        const set = tokenIndex.get(tok);
+        if (set) set.add(i);
+        else tokenIndex.set(tok, new Set([i]));
       }
-      return sub.length === 0;
+    }
+
+    // Precompute positions per token for each sequence (for fast subsequence checks)
+    const positions = new Array(n);
+    for (let i = 0; i < n; i += 1) {
+      const map = new Map();
+      const seq = seqs[i];
+      for (let p = 0; p < seq.length; p += 1) {
+        const tok = seq[p];
+        const arr = map.get(tok);
+        if (arr) arr.push(p);
+        else map.set(tok, [p]);
+      }
+      positions[i] = map;
+    }
+
+    const isSubsequenceWithPos = (subTokens, fullIdx) => {
+      if (!subTokens || subTokens.length === 0) return true;
+      const posMap = positions[fullIdx];
+      let last = -1;
+      for (const tok of subTokens) {
+        const arr = posMap.get(tok);
+        if (!arr || arr.length === 0) return false;
+        // binary search for first element > last
+        let lo = 0;
+        let hi = arr.length - 1;
+        if (arr[hi] <= last) return false;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (arr[mid] <= last) lo = mid + 1;
+          else hi = mid;
+        }
+        last = arr[lo];
+      }
+      return true;
     };
-    return seqs
-      .filter(
-        (seq, i) =>
-          !seqs.some((other, j) => j !== i && other.length >= seq.length && isSubsequence(seq, other))
-      )
-      .map((seq) => seq.join('-'));
+
+    const result = [];
+    // For each sequence, find candidate supersets via inverted index intersection.
+    for (let i = 0; i < n; i += 1) {
+      const seq = seqs[i];
+      const len = seq.length;
+      // quick path: empty sequence -> keep
+      if (len === 0) {
+        result.push(items[i]);
+        continue;
+      }
+
+      // choose token with smallest posting list to start intersection
+      let bestTok = null;
+      let bestSet = null;
+      for (const tok of seq) {
+        const set = tokenIndex.get(tok);
+        if (!set) {
+          bestSet = null;
+          break; // no candidate can contain this token
+        }
+        if (bestSet == null || set.size < bestSet.size) {
+          bestSet = set;
+          bestTok = tok;
+        }
+      }
+      if (!bestSet || bestSet.size === 0) {
+        result.push(items[i]);
+        continue;
+      }
+
+      // iterate candidates in bestSet and test subsequence property
+      let isContained = false;
+      for (const candIdx of bestSet) {
+        if (candIdx === i) continue;
+        const candSeq = seqs[candIdx];
+        if (candSeq.length < len) continue;
+        if (isSubsequenceWithPos(seq, candIdx)) {
+          isContained = true;
+          break;
+        }
+      }
+
+      if (!isContained) result.push(items[i]);
+    }
+
+    return result;
   };
 
   _filterRedundantDiffAdds(items) {
